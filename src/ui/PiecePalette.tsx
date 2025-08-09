@@ -60,89 +60,26 @@ export const PiecePalette: React.FC<{
         {player.remaining.map((id: PieceId) => {
           const preview = orientationsOf(PIECES[id])[0];
           const selected = id === pieceId;
-
-          // NEW: animated glow when selected
-          const glow = React.useRef(new Animated.Value(0)).current;
-          React.useEffect(() => {
-            if (!selected) {
-              glow.setValue(0);
-              return;
-            }
-            const loop = Animated.loop(
-              Animated.sequence([
-                Animated.timing(glow, {
-                  toValue: 1,
-                  duration: 900,
-                  useNativeDriver: false,
-                }),
-                Animated.timing(glow, {
-                  toValue: 0,
-                  duration: 900,
-                  useNativeDriver: false,
-                }),
-              ])
-            );
-            loop.start();
-            return () => loop.stop();
-          }, [selected]);
-
-          const outline = glow.interpolate({
-            inputRange: [0, 1],
-            outputRange: [pal.accent, "#b9a4ff"], // subtle pulse variant
-          });
-          const lift = glow.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, -1],
-          });
-
           return (
-            <Pressable
+            <PieceCard
               key={id}
+              id={id}
+              preview={preview}
+              selected={selected}
+              colorFill={pal.player[player.id].fill}
+              borderColor={pal.grid}
+              accent={pal.accent}
               onPress={() => {
                 setPieceId(id);
                 setIndex(0);
+                onChoose(id, preview); // spawn ghost immediately
               }}
-            >
-              <Animated.View
-                style={{
-                  transform: [{ translateY: selected ? lift : 0 }],
-                  borderWidth: selected ? 2 : 1,
-                  borderColor: selected
-                    ? (outline as unknown as string)
-                    : pal.grid,
-                  padding: 4,
-                  borderRadius: 8,
-                  backgroundColor: pal.card,
-                  shadowColor: "#000",
-                  shadowOpacity: selected ? 0.25 : 0.1,
-                  shadowRadius: selected ? 8 : 4,
-                  shadowOffset: { width: 0, height: selected ? 4 : 2 },
-                }}
-              >
-                <Svg width={6 * TILE} height={6 * TILE}>
-                  {preview.map((row, y) =>
-                    row.map((v, x) =>
-                      v ? (
-                        <Rect
-                          key={`${id}-${x}-${y}`}
-                          x={x * TILE}
-                          y={y * TILE}
-                          width={TILE}
-                          height={TILE}
-                          fill={pal.player[player.id].fill}
-                          stroke={pal.grid}
-                        />
-                      ) : null
-                    )
-                  )}
-                </Svg>
-              </Animated.View>
-            </Pressable>
+            />
           );
         })}
       </View>
 
-      {/* Orientation viewer + actions */}
+      {/* Optional orientation viewer (still useful if you want to preview flips/rotates) */}
       {shape && (
         <View style={{ gap: 8 }}>
           <Text style={{ color: pal.text }}>
@@ -175,7 +112,7 @@ export const PiecePalette: React.FC<{
             <AnimatedButton
               onPress={cycleOrientation}
               baseBg={pal.btnBg}
-              hoverBg={pal.btnHover}
+              hoverBg={pal.btnBg}
               pressBg={pal.accent}
               textColor={pal.btnText}
               textColorPressed="#fff"
@@ -188,7 +125,7 @@ export const PiecePalette: React.FC<{
               onPress={pickAndPlace}
               disabled={!pieceId}
               baseBg={pal.accent}
-              hoverBg={pal.accent} // keep accent on hover for consistency
+              hoverBg={pal.accent}
               pressBg={pal.accent}
               textColor="#fff"
               textColorPressed="#fff"
@@ -203,11 +140,89 @@ export const PiecePalette: React.FC<{
   );
 };
 
-/**
- * AnimatedButton
- * - Animates background color & slight scale on hover/press
- * - Works on native + web, no CSS transitions needed
- */
+const PieceCard: React.FC<{
+  id: PieceId;
+  preview: Orientation;
+  selected: boolean;
+  colorFill: string;
+  borderColor: string;
+  accent: string;
+  onPress: () => void;
+}> = ({ id, preview, selected, colorFill, borderColor, accent, onPress }) => {
+  const glow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!selected) {
+      glow.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glow, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [selected]);
+
+  const outline = glow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [accent, "#b9a4ff"],
+  });
+  const lift = glow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -1],
+  });
+
+  return (
+    <Pressable onPress={onPress}>
+      <Animated.View
+        style={{
+          transform: [{ translateY: selected ? lift : 0 }],
+          borderWidth: selected ? 2 : 1,
+          borderColor: selected ? (outline as unknown as string) : borderColor,
+          padding: 4,
+          borderRadius: 8,
+          backgroundColor: "#1116",
+          // (web warns about shadow* props; it's okay to keep or replace with boxShadow in a web-only style)
+          shadowColor: "#000",
+          shadowOpacity: selected ? 0.25 : 0.1,
+          shadowRadius: selected ? 8 : 4,
+          shadowOffset: { width: 0, height: selected ? 4 : 2 },
+        }}
+      >
+        <Svg width={6 * TILE} height={6 * TILE}>
+          {preview.map((row, y) =>
+            row.map((v, x) =>
+              v ? (
+                <Rect
+                  key={`${id}-${x}-${y}`}
+                  x={x * TILE}
+                  y={y * TILE}
+                  width={TILE}
+                  height={TILE}
+                  fill={colorFill}
+                  stroke={borderColor}
+                />
+              ) : null
+            )
+          )}
+        </Svg>
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+/** AnimatedButton unchanged (kept) */
 const AnimatedButton: React.FC<{
   onPress: () => void;
   label: string;
@@ -233,9 +248,6 @@ const AnimatedButton: React.FC<{
 }) => {
   const [hover, setHover] = useState(false);
   const [press, setPress] = useState(false);
-
-  // Drive animations with one value:
-  // 0 = base, 0.5 = hover, 1 = pressed
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -244,22 +256,18 @@ const AnimatedButton: React.FC<{
       toValue: target,
       duration: press ? 80 : 140,
       easing: press ? Easing.out(Easing.quad) : Easing.inOut(Easing.quad),
-      useNativeDriver: false, // color interpolation needs false
+      useNativeDriver: false,
     }).start();
   }, [hover, press]);
 
-  // interpolate bg color
   const bgColor = anim.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [baseBg, hoverBg, pressBg],
   });
-
-  // subtle scale on press
   const scale = anim.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 0.98],
   });
-
   const isActive = hover || press;
 
   return (
@@ -283,11 +291,10 @@ const AnimatedButton: React.FC<{
           flexDirection: "row",
           gap: 8,
           alignItems: "center",
-          backgroundColor: "#00000000", // transparent; Animated.View provides bg
+          backgroundColor: "#0000",
         }}
       >
         <Animated.View
-          // Animated bg layer
           style={{
             position: "absolute",
             inset: 0 as any,

@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, GestureResponderEvent, View } from "react-native";
-import Svg, { Rect } from "react-native-svg";
+import Svg, { Line, Rect } from "react-native-svg";
 import { useGame } from "../GameProvider";
 import { BOARD_SIZE, isLegalMove, PLAYER_CORNERS } from "../rules";
-import { Orientation } from "../types";
+import type { Orientation } from "../types";
 import { usePalette } from "./theme";
 
 const CELL = 24;
@@ -51,7 +51,7 @@ const AnimatedCell: React.FC<{
   );
 };
 
-// Soft pulsing ring to indicate the required starting corner
+// Soft pulsing ring to indicate the required starting corner (first move)
 const CornerPulse: React.FC<{ x: number; y: number; color: string }> = ({
   x,
   y,
@@ -108,42 +108,16 @@ const CornerPulse: React.FC<{ x: number; y: number; color: string }> = ({
 };
 
 export const Board: React.FC<{
-  pending?: { shape: Orientation; pieceId: string } | null;
-  onCellClick?: (x: number, y: number) => void;
-}> = ({ pending, onCellClick }) => {
+  // NEW: draggable ghost controlled by HUD
+  ghost?: { shape: Orientation; at: { x: number; y: number } } | null;
+  onGhostMove?: (cell: { x: number; y: number }) => void;
+
+  // Keep showing placed tiles etc.
+}> = ({ ghost, onGhostMove }) => {
   const { state } = useGame();
   const pal = usePalette();
-  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
 
   const grid = useMemo(() => state.board, [state.board]);
-
-  const updateHover = (xPx: number, yPx: number) => {
-    const x = Math.floor(xPx / CELL);
-    const y = Math.floor(yPx / CELL);
-    if (x >= 0 && y >= 0 && x < BOARD_SIZE && y < BOARD_SIZE)
-      setHover({ x, y });
-    else setHover(null);
-  };
-
-  const onResponderMove = (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
-    updateHover(locationX, locationY);
-  };
-
-  const onResponderRelease = (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
-    const x = Math.floor(locationX / CELL);
-    const y = Math.floor(locationY / CELL);
-    if (x >= 0 && y >= 0 && x < BOARD_SIZE && y < BOARD_SIZE) {
-      onCellClick?.(x, y);
-    }
-    setHover(null);
-  };
-
-  const ghostOk = useMemo(() => {
-    if (!pending || !hover) return false;
-    return isLegalMove(state, state.current, pending.shape, hover);
-  }, [pending, hover, state]);
 
   const width = BOARD_SIZE * CELL;
   const height = BOARD_SIZE * CELL;
@@ -152,10 +126,16 @@ export const Board: React.FC<{
   const showCornerCue = !!current && !current.hasPlayed;
   const corner = PLAYER_CORNERS[state.current as 0 | 1 | 2 | 3];
 
-  const ghostOffset = useRef(new Animated.Value(0)).current;
+  // Is the ghost currently in a legal spot?
+  const ghostOk = useMemo(() => {
+    if (!ghost) return false;
+    return isLegalMove(state, state.current, ghost.shape, ghost.at);
+  }, [ghost, state]);
 
+  // invalid-ghost shake
+  const ghostOffset = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const shouldShake = !!(pending && hover && !ghostOk);
+    const shouldShake = !!(ghost && !ghostOk);
     if (!shouldShake) {
       ghostOffset.stopAnimation();
       ghostOffset.setValue(0);
@@ -178,12 +158,26 @@ export const Board: React.FC<{
         useNativeDriver: true,
       }),
     ]).start();
-  }, [pending, hover, ghostOk]);
+  }, [ghost, ghostOk]);
 
   const ghostShake = ghostOffset.interpolate({
     inputRange: [-1, 1],
-    outputRange: [-2, 2], // pixels
+    outputRange: [-2, 2],
   });
+
+  // Drag-to-move ghost: snap to cell and clamp inside board
+  const moveToEvent = (e: GestureResponderEvent) => {
+    if (!ghost || !onGhostMove) return;
+    const { locationX, locationY } = e.nativeEvent;
+    let x = Math.floor(locationX / CELL);
+    let y = Math.floor(locationY / CELL);
+    // clamp using current shape dims
+    const h = ghost.shape.length;
+    const w = ghost.shape[0].length;
+    x = Math.max(0, Math.min(BOARD_SIZE - w, x));
+    y = Math.max(0, Math.min(BOARD_SIZE - h, y));
+    onGhostMove({ x, y });
+  };
 
   return (
     <View
@@ -193,45 +187,93 @@ export const Board: React.FC<{
         position: "relative",
       }}
     >
-      {/* Base grid (empty cells only) */}
+      {/* 1) Base grid background + cell fills */}
       <Svg width={width} height={height}>
-        {/* Ghost preview (overlay, shake when invalid) */}
-        {pending && hover && (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              left: hover.x * CELL,
-              top: hover.y * CELL,
-              transform: [{ translateX: ghostOk ? 0 : ghostShake }],
-              opacity: 0.9,
-            }}
-          >
-            <Svg
-              width={pending.shape[0].length * CELL}
-              height={pending.shape.length * CELL}
-            >
-              {pending.shape.map((r, yy) =>
-                r.map((v, xx) =>
-                  v ? (
-                    <Rect
-                      key={`ghost-${xx}-${yy}`}
-                      x={xx * CELL}
-                      y={yy * CELL}
-                      width={CELL}
-                      height={CELL}
-                      fill={ghostOk ? pal.ghostOk : pal.ghostBad}
-                      opacity={0.6}
-                    />
-                  ) : null
-                )
-              )}
-            </Svg>
-          </Animated.View>
+        <Rect x={0} y={0} width={width} height={height} fill={pal.boardBg} />
+        {grid.map((row, y) =>
+          row.map((_, x) => (
+            <Rect
+              key={`g-${x}-${y}`}
+              x={x * CELL}
+              y={y * CELL}
+              width={CELL}
+              height={CELL}
+              fill={pal.cellBg}
+            />
+          ))
         )}
       </Svg>
 
-      {/* Placed tiles (animated overlay) */}
+      {/* 2) Crisp grid lines overlay */}
+      <Svg
+        width={width}
+        height={height}
+        style={{ position: "absolute", left: 0, top: 0 }}
+        // @ts-ignore
+        shapeRendering="crispEdges"
+      >
+        {Array.from({ length: BOARD_SIZE + 1 }).map((_, i) => (
+          <Line
+            key={`v-${i}`}
+            x1={i * CELL}
+            y1={0}
+            x2={i * CELL}
+            y2={height}
+            stroke={pal.grid}
+            strokeWidth={1}
+            opacity={0.9}
+          />
+        ))}
+        {Array.from({ length: BOARD_SIZE + 1 }).map((_, i) => (
+          <Line
+            key={`h-${i}`}
+            x1={0}
+            y1={i * CELL}
+            x2={width}
+            y2={i * CELL}
+            stroke={pal.grid}
+            strokeWidth={1}
+            opacity={0.9}
+          />
+        ))}
+      </Svg>
+
+      {/* 3) Ghost preview (draggable, shake if illegal) */}
+      {ghost && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: ghost.at.x * CELL,
+            top: ghost.at.y * CELL,
+            transform: [{ translateX: ghostOk ? 0 : ghostShake }],
+            opacity: 0.9,
+          }}
+        >
+          <Svg
+            width={ghost.shape[0].length * CELL}
+            height={ghost.shape.length * CELL}
+          >
+            {ghost.shape.map((r, yy) =>
+              r.map((v, xx) =>
+                v ? (
+                  <Rect
+                    key={`ghost-${xx}-${yy}`}
+                    x={xx * CELL}
+                    y={yy * CELL}
+                    width={CELL}
+                    height={CELL}
+                    fill={ghostOk ? pal.ghostOk : pal.ghostBad}
+                    opacity={0.6}
+                  />
+                ) : null
+              )
+            )}
+          </Svg>
+        </Animated.View>
+      )}
+
+      {/* 4) Placed tiles (animated overlay) */}
       {grid.map((row, y) =>
         row.map((owner, x) =>
           owner === null ? null : (
@@ -247,17 +289,16 @@ export const Board: React.FC<{
         )
       )}
 
-      {/* First-move corner pulse cue */}
+      {/* 5) First-move corner pulse cue */}
       {showCornerCue && (
         <CornerPulse x={corner.x} y={corner.y} color={pal.accent} />
       )}
 
-      {/* Input capture layer */}
+      {/* 6) Input capture layer for dragging the ghost */}
       <View
         onStartShouldSetResponder={() => true}
-        onResponderMove={onResponderMove}
-        onResponderRelease={onResponderRelease}
-        onResponderTerminate={() => setHover(null)}
+        onResponderMove={moveToEvent}
+        onResponderRelease={moveToEvent}
         style={{
           position: "absolute",
           left: 0,

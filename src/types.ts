@@ -1,6 +1,7 @@
 export type Cell = 0 | 1;
 
 export type Shape = number[][]; // 2D matrix, 1 = filled
+export type Orientation = Shape;
 
 export type Coord = { x: number; y: number };
 
@@ -54,15 +55,50 @@ export interface PlayerState {
   active: boolean; // eliminated (no legal moves) => false
 }
 
-export interface GameState {
-  board: (PlayerId | null)[][]; // 20x20 owner or null
-  players: PlayerState[];
-  current: PlayerId; // whose turn
-  history: PlacedPiece[];
-  winnerIds: PlayerId[] | null;
+/** Extra per-match info used by UI and pre-game flow */
+export interface MatchMeta {
+  /** Stable identifier for this match (e.g., "2025-08-09-ABCD"). */
+  matchId?: string;
+
+  /** Seed to drive deterministic RNG for dice animation & order resolution. */
+  rngSeed?: string;
+
+  /** True while we are in the interactive roll phase (before reordering players). */
+  rollPending?: boolean;
+
+  /**
+   * Queue of seats that still need to roll interactively (human players),
+   * in the order they should roll. If empty and rollPending=true, bots will
+   * auto-roll and resolve immediately.
+   */
+  rollQueue?: PlayerId[];
+
+  /**
+   * Raw rolls per seat collected so far (before mapping to final colors).
+   * `value` can be null until that seat has rolled (useful for animating per-seat dice).
+   */
+  rolls?: { id: PlayerId; value: number | null }[];
+
+  /**
+   * Final, mapped roll results in color order (Blue→Yellow→Red→Green),
+   * shown briefly after resolving turn order.
+   */
+  lastRoll?: { color: PlayerColor; value: number }[];
+
+  /** Prevents re-showing the results overlay within the same match. */
+  showedRollOnce?: boolean;
 }
 
-export type Orientation = Shape; // transformed shape
+export interface GameState {
+  board: (PlayerId | null)[][];
+  players: PlayerState[];
+  current: PlayerId;
+  history: PlacedPiece[];
+  winnerIds: PlayerId[] | null;
+
+  /** Optional per-match metadata used by UI (dice, seeds, overlays). */
+  meta?: MatchMeta;
+}
 
 export type GameEvent =
   | { type: "placed"; piece: PlacedPiece }
