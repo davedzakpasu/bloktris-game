@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { Animated, GestureResponderEvent, View } from "react-native";
+import { Animated, GestureResponderEvent, Platform, View } from "react-native";
 import Svg, { Line, Rect } from "react-native-svg";
 import { useGame } from "../GameProvider";
 import { BOARD_SIZE, isLegalMove, PLAYER_CORNERS } from "../rules";
 import type { Orientation } from "../types";
 import { usePalette } from "./theme";
-
-const CELL = 24;
 
 // Animated tile that "pops" when it appears
 const AnimatedCell: React.FC<{
@@ -15,14 +13,15 @@ const AnimatedCell: React.FC<{
   fill: string;
   stroke: string;
   keyStr: string;
-}> = ({ x, y, fill, stroke, keyStr }) => {
+  cell: number;
+}> = ({ x, y, fill, stroke, keyStr, cell }) => {
   const s = useRef(new Animated.Value(0.6)).current;
   useEffect(() => {
     s.setValue(0.6);
     Animated.spring(s, {
       toValue: 1,
       friction: 6,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
   }, [keyStr]);
   return (
@@ -30,19 +29,19 @@ const AnimatedCell: React.FC<{
       pointerEvents="none"
       style={{
         position: "absolute",
-        left: x * CELL,
-        top: y * CELL,
-        width: CELL,
-        height: CELL,
+        left: x * cell,
+        top: y * cell,
+        width: cell,
+        height: cell,
         transform: [{ scale: s }],
       }}
     >
-      <Svg width={CELL} height={CELL}>
+      <Svg width={cell} height={cell}>
         <Rect
           x={0}
           y={0}
-          width={CELL}
-          height={CELL}
+          width={cell}
+          height={cell}
           fill={fill}
           stroke={stroke}
         />
@@ -52,11 +51,12 @@ const AnimatedCell: React.FC<{
 };
 
 // Soft pulsing ring to indicate the required starting corner (first move)
-const CornerPulse: React.FC<{ x: number; y: number; color: string }> = ({
-  x,
-  y,
-  color,
-}) => {
+const CornerPulse: React.FC<{
+  x: number;
+  y: number;
+  color: string;
+  cell: number;
+}> = ({ x, y, color, cell }) => {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
@@ -64,12 +64,12 @@ const CornerPulse: React.FC<{ x: number; y: number; color: string }> = ({
         Animated.timing(a, {
           toValue: 1,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(a, {
           toValue: 0,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ])
     );
@@ -84,10 +84,10 @@ const CornerPulse: React.FC<{ x: number; y: number; color: string }> = ({
       pointerEvents="none"
       style={{
         position: "absolute",
-        left: x * CELL,
-        top: y * CELL,
-        width: CELL,
-        height: CELL,
+        left: x * cell,
+        top: y * cell,
+        width: cell,
+        height: cell,
         alignItems: "center",
         justifyContent: "center",
         transform: [{ scale }],
@@ -96,8 +96,8 @@ const CornerPulse: React.FC<{ x: number; y: number; color: string }> = ({
     >
       <View
         style={{
-          width: CELL,
-          height: CELL,
+          width: cell,
+          height: cell,
           borderWidth: 2,
           borderColor: color,
           borderRadius: 4,
@@ -111,14 +111,15 @@ export const Board: React.FC<{
   // NEW: draggable ghost controlled by HUD
   ghost?: { shape: Orientation; at: { x: number; y: number } } | null;
   onGhostMove?: (cell: { x: number; y: number }) => void;
-
+  cellSize: number;
   // Keep showing placed tiles etc.
-}> = ({ ghost, onGhostMove }) => {
+}> = ({ ghost, onGhostMove, cellSize }) => {
   const { state } = useGame();
   const pal = usePalette();
 
   const grid = useMemo(() => state.board, [state.board]);
 
+  const CELL = cellSize;
   const width = BOARD_SIZE * CELL;
   const height = BOARD_SIZE * CELL;
 
@@ -145,17 +146,17 @@ export const Board: React.FC<{
       Animated.timing(ghostOffset, {
         toValue: 1,
         duration: 40,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }),
       Animated.timing(ghostOffset, {
         toValue: -1,
         duration: 60,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }),
       Animated.timing(ghostOffset, {
         toValue: 0,
         duration: 60,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }),
     ]).start();
   }, [ghost, ghostOk]);
@@ -278,12 +279,13 @@ export const Board: React.FC<{
         row.map((owner, x) =>
           owner === null ? null : (
             <AnimatedCell
-              key={`t-${x}-${y}-${owner}-${state.history.length}`}
+              key={`t-${x}-${y}-${owner}`}
               x={x}
               y={y}
               fill={pal.player[owner].fill}
               stroke={pal.grid}
-              keyStr={`${x}-${y}-${owner}-${state.history.length}`}
+              keyStr={`${x}-${y}-${owner}`}
+              cell={CELL}
             />
           )
         )
@@ -291,12 +293,13 @@ export const Board: React.FC<{
 
       {/* 5) First-move corner pulse cue */}
       {showCornerCue && (
-        <CornerPulse x={corner.x} y={corner.y} color={pal.accent} />
+        <CornerPulse x={corner.x} y={corner.y} color={pal.accent} cell={CELL} />
       )}
 
       {/* 6) Input capture layer for dragging the ghost */}
       <View
         onStartShouldSetResponder={() => true}
+        onResponderGrant={moveToEvent}
         onResponderMove={moveToEvent}
         onResponderRelease={moveToEvent}
         style={{

@@ -1,4 +1,4 @@
-import { PIECES } from "./pieces";
+import { ORIENTATIONS } from "./pieces";
 import {
   Coord,
   GameState,
@@ -187,12 +187,11 @@ export function applyMove(
   at: Coord
 ): GameState {
   const board = state.board.map((row) => [...row]);
-  let placedSquares = 0;
+
   for (let y = 0; y < shape.length; y++) {
     for (let x = 0; x < shape[0].length; x++) {
       if (shape[y][x]) {
         board[at.y + y][at.x + x] = pid;
-        placedSquares++;
       }
     }
   }
@@ -202,8 +201,7 @@ export function applyMove(
       ...p,
       hasPlayed: true,
       remaining: p.remaining.filter((id) => id !== pieceId),
-      // Blokus scoring: -remaining squares; bonus rules can be added here
-      score: p.score - placedSquares,
+      // score recomputed in reducer from remaining
     };
   });
 
@@ -244,12 +242,11 @@ export function hasAnyLegalMove(
   };
   const p = players[pid];
   for (const pieceId of p.remaining) {
-    const piece = PIECES[pieceId as keyof typeof PIECES];
-    for (const o of orientationsOf(piece)) {
+    for (const o of ORIENTATIONS[pieceId]) {
+      // (Optionally iterate only candidate cells)
       for (let y = 0; y < 20; y++)
-        for (let x = 0; x < 20; x++) {
+        for (let x = 0; x < 20; x++)
           if (isLegalMove(dummy, pid, o, { x, y })) return true;
-        }
     }
   }
   return false;

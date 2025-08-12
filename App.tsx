@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GameProvider, useGame } from "./src/GameProvider";
 import { initSfx } from "./src/sfx";
+import { AppLogo } from "./src/ui/AppLogo";
 import { HUD } from "./src/ui/HUD";
+import { SplashIntro } from "./src/ui/SplashIntro";
 import { usePalette } from "./src/ui/theme";
 
 const Home: React.FC = () => {
@@ -30,9 +33,7 @@ const Home: React.FC = () => {
           backgroundColor: pal.boardBg,
         }}
       >
-        <Text style={{ color: pal.text, fontSize: 28, fontWeight: "900" }}>
-          BLOKTRIS
-        </Text>
+        <AppLogo size={200} />
         <Text style={{ color: pal.text, opacity: 0.8 }}>
           Premium Blokus x Tetris — React Native (Web)
         </Text>
@@ -88,14 +89,36 @@ const Home: React.FC = () => {
   );
 };
 
+function Root() {
+  const [showIntro, setShowIntro] = useState(true);
+
+  // Optional: only show once per session (web)
+  // useEffect(() => {
+  //   if (typeof window !== "undefined" && sessionStorage.getItem("bloktris.intro") === "1") {
+  //     setShowIntro(false);
+  //   }
+  // }, []);
+  // const onIntroFinish = () => {
+  //   setShowIntro(false);
+  //   if (typeof window !== "undefined") sessionStorage.setItem("bloktris.intro", "1");
+  // };
+
+  const onIntroFinish = () => setShowIntro(false);
+
+  if (showIntro) {
+    return <SplashIntro onFinish={onIntroFinish} />;
+  }
+  return <Home />;
+}
+
 export default function App() {
   return (
-    <GameProvider>
-      <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} style={{ flex: 1 }}>
-          <Home />
-        </ScrollView>
-      </SafeAreaView>
-    </GameProvider>
+    <SafeAreaProvider>
+      <GameProvider>
+        <SafeAreaView style={{ flex: 1 }}>
+          <Root />
+        </SafeAreaView>
+      </GameProvider>
+    </SafeAreaProvider>
   );
 }

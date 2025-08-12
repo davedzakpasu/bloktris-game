@@ -1,4 +1,5 @@
-import { Coord, PieceDef, PieceId } from "./types";
+import { orientationsOf } from "./rules";
+import { Coord, Orientation, PieceDef, PieceId } from "./types";
 
 // helper to build by strings (rows) for readability
 const rows = (...lines: string[]): Coord[] => {
@@ -35,7 +36,7 @@ export const PIECES: Record<PieceId, PieceDef> = {
   L5: { id: "L5", size: 5, cells: rows("1000", "1111") },
   P5: { id: "P5", size: 5, cells: rows("110", "110", "100") },
   N5: { id: "N5", size: 5, cells: rows("0111", "1100") },
-  T5: { id: "T5", size: 5, cells: rows("11111", "00100") },
+  T5: { id: "T5", size: 5, cells: rows("111", "010", "010") },
   U5: { id: "U5", size: 5, cells: rows("101", "111") },
   V5: { id: "V5", size: 5, cells: rows("100", "100", "111") },
   W5: { id: "W5", size: 5, cells: rows("100", "110", "011") },
@@ -44,5 +45,14 @@ export const PIECES: Record<PieceId, PieceDef> = {
   Z5: { id: "Z5", size: 5, cells: rows("001", "111", "100") },
 };
 
+export const PIECE_SIZES: Record<PieceId, number> = Object.fromEntries(
+  Object.entries(PIECES).map(([id, def]) => [id as PieceId, def.size])
+) as Record<PieceId, number>;
+
 // All 21 IDs in a fixed order
 export const ALL_PIECE_IDS: PieceId[] = Object.keys(PIECES) as PieceId[];
+
+export const ORIENTATIONS: Record<PieceId, Orientation[]> = {} as any;
+for (const id of Object.keys(PIECES) as PieceId[]) {
+  ORIENTATIONS[id] = orientationsOf(PIECES[id]);
+}

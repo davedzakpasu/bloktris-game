@@ -3,11 +3,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { useGame } from "../GameProvider";
+import { shadow } from "../helpers/shadow";
 import { PIECES } from "../pieces";
 import { orientationsOf } from "../rules";
 import type { Orientation, PieceId } from "../types";
-import { PlaceIcon, RotateIcon } from "./icons/icons";
-import { PlaceIconFilled, RotateIconFilled } from "./icons/iconsFilled";
 import { usePalette } from "./theme";
 
 const TILE = 16;
@@ -45,7 +44,8 @@ export const PiecePalette: React.FC<{
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ color: pal.text, fontWeight: "600" }}>
-        {player.color.toUpperCase()} — Choose a piece
+        {player.color.toUpperCase()} — Choose a piece{" "}
+        <Text style={{ opacity: 0.7 }}>({player.remaining.length} left)</Text>
       </Text>
 
       {/* Remaining pieces */}
@@ -80,7 +80,7 @@ export const PiecePalette: React.FC<{
       </View>
 
       {/* Optional orientation viewer (still useful if you want to preview flips/rotates) */}
-      {shape && (
+      {/* {shape && (
         <View style={{ gap: 8 }}>
           <Text style={{ color: pal.text }}>
             Orientation ({index + 1}/{orients.length})
@@ -135,7 +135,7 @@ export const PiecePalette: React.FC<{
             />
           </View>
         </View>
-      )}
+      )} */}
     </View>
   );
 };
@@ -193,11 +193,7 @@ const PieceCard: React.FC<{
           padding: 4,
           borderRadius: 8,
           backgroundColor: "#1116",
-          // (web warns about shadow* props; it's okay to keep or replace with boxShadow in a web-only style)
-          shadowColor: "#000",
-          shadowOpacity: selected ? 0.25 : 0.1,
-          shadowRadius: selected ? 8 : 4,
-          shadowOffset: { width: 0, height: selected ? 4 : 2 },
+          ...shadow(10),
         }}
       >
         <Svg width={6 * TILE} height={6 * TILE}>

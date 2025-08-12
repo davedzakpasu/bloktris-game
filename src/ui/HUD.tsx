@@ -1,29 +1,38 @@
 import React, { useEffect, useState } from "react";
 import {
+  Animated,
   Platform,
   Pressable,
   ScrollView,
   Text,
-  View,
   useWindowDimensions,
+  View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { botMove } from "../bots";
 import { useGame } from "../GameProvider";
+import { shadow } from "../helpers/shadow";
 import { BOARD_SIZE, isLegalMove } from "../rules";
 import type { PieceId } from "../types";
+import { AppLogo } from "./AppLogo";
 import { Board } from "./Board";
 import { BottomSheet } from "./BottomSheet";
-import { HelpButton } from "./buttons/HelpButton";
 import { PaletteFab } from "./buttons/PaletteFab";
 import { Confetti } from "./Confetti";
 import { DiceRollOverlay } from "./DiceRollOverlay";
 import { PlaceIcon, RotateIcon } from "./icons/icons";
 import { PlaceIconFilled, RotateIconFilled } from "./icons/iconsFilled";
 import { FlipIcon, FlipIconFilled } from "./icons/iconsFlip";
-import { MatchBadge } from "./MatchBadge";
 import { PiecePalette } from "./PiecePalette";
 import { ShortcutTooltip } from "./ShortcutTooltip";
 import { usePalette } from "./theme";
+import { TopBar } from "./TopBar";
+
+let playStart = () => {};
+try {
+  // @ts-ignore
+  ({ playStart } = require("../sfx"));
+} catch {}
 
 let playPlace = () => {};
 let playInvalid = () => {};
@@ -33,7 +42,13 @@ try {
 } catch {}
 
 type Shape = number[][];
-const CELL = 24;
+
+const MIN_CELL = 16;
+const MAX_CELL = 34;
+const RAIL_W_OPEN = 380;
+const RAIL_W_CLOSED = 48;
+const H_GAP = 16; // gap between board and rail in wide layout
+const H_PAD = 24;
 
 function centerCellFor(shape: Shape) {
   const h = shape.length;
@@ -59,8 +74,11 @@ export const HUD: React.FC = () => {
   const { state, dispatch } = useGame();
   const pal = usePalette();
   const { width: vw } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isWide = Platform.OS === "web" && vw >= 1024;
+  const TOPBAR_H = 48;
 
+  const introA = React.useRef(new Animated.Value(0)).current;
   const [showShortcuts, setShowShortcuts] = useState(true);
   const [pending, setPending] = useState<{
     pieceId: PieceId;
@@ -74,16 +92,31 @@ export const HUD: React.FC = () => {
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const boardPx = BOARD_SIZE * CELL; // board width == height
+  // compute a responsive cell size primarily from available width
+  const railW = isWide ? (railOpen ? RAIL_W_OPEN : RAIL_W_CLOSED) : 0;
+  const availableW = isWide
+    ? Math.max(240, vw - H_PAD * 2 - railW - H_GAP) // board column width
+    : Math.max(240, vw - H_PAD * 2); // full width on narrow
+  const cell = Math.max(
+    MIN_CELL,
+    Math.min(MAX_CELL, Math.floor(availableW / BOARD_SIZE))
+  );
+  const boardPx = BOARD_SIZE * cell; // board width == height
 
   const [ghostCell, setGhostCell] = useState<{ x: number; y: number } | null>(
     null
   );
 
+  const BOT_BASE_DELAY_MS = 850; // was 220
+  const BOT_JITTER_MS = 250; // +- random jitter
+  const botDelay = () =>
+    BOT_BASE_DELAY_MS + (Math.random() * 2 - 1) * BOT_JITTER_MS;
+  const [botThinking, setBotThinking] = useState(false);
+
   const cur = state.players[state.current];
   const isVsBots = state.players.some((p) => p.isBot);
   const who = isVsBots ? (cur?.isBot ? "bot" : "you") : null;
-  const curColorHex = cur ? usePalette().player[cur.id].fill : pal.text;
+  const curColorHex = cur ? pal.player[cur.id].fill : pal.text;
 
   // Show prompt if we need the human to roll
   const rollPending = !!state.meta?.rollPending;
@@ -95,6 +128,16 @@ export const HUD: React.FC = () => {
       : undefined;
 
   const dismissRollResults = () => {
+    // SFX
+    playStart();
+    // Animate board/controls in
+    introA.setValue(0);
+    Animated.timing(introA, {
+      toValue: 1,
+      duration: 420,
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+
     setShowRollResults(false);
     dispatch({ type: "MARK_ROLL_SHOWN" });
   };
@@ -117,10 +160,20 @@ export const HUD: React.FC = () => {
   useEffect(() => {
     const cur = state.current;
     const p = state.players[cur];
+
+    // Don’t think/place while any pre-game overlay is up
+    if (
+      state.meta?.rollPending ||
+      (state.meta?.lastRoll && !state.meta?.showedRollOnce)
+    ) {
+      return;
+    }
+
     if (!p?.isBot || state.winnerIds || botThinkingRef.current) return;
 
     botThinkingRef.current = true;
-    // small delay for UX & to batch updates
+    setBotThinking(true);
+
     const t = setTimeout(() => {
       const best = botMove(state, cur);
       if (!best) {
@@ -134,33 +187,23 @@ export const HUD: React.FC = () => {
           at: best.at,
         });
       }
-      botThinkingRef.current = false; // allow next bot (if any) to proceed on next state tick
-    }, 220);
+      botThinkingRef.current = false;
+      setBotThinking(false);
+    }, botDelay());
 
     return () => clearTimeout(t);
-  }, [state.current, state.winnerIds, state.players, state.board]);
-
-  const [showRoll, setShowRoll] = useState(false);
-
-  useEffect(() => {
-    // Show only if we have fresh rolls and haven’t shown yet
-    if (
-      state.meta?.lastRoll &&
-      !state.meta?.showedRollOnce &&
-      state.history.length === 0
-    ) {
-      setShowRoll(true);
-    }
-  }, [state.meta?.lastRoll, state.meta?.showedRollOnce, state.history.length]);
-
-  const onDiceDone = () => {
-    setShowRoll(false);
-    // mark shown in state (add a small action)
-    dispatch({ type: "MARK_ROLL_SHOWN" });
-  };
+  }, [
+    state.current,
+    state.winnerIds,
+    state.players,
+    state.board,
+    state.meta?.rollPending,
+    state.meta?.lastRoll,
+    state.meta?.showedRollOnce,
+  ]);
 
   // choose from palette -> spawn ghost centered
-  const onChoose = (pieceId: PieceId, shape: Shape) => {
+  const handleChoose = (pieceId: PieceId, shape: Shape) => {
     setPending({ pieceId, shape });
     setGhostCell(centerCellFor(shape));
   };
@@ -207,7 +250,6 @@ export const HUD: React.FC = () => {
     });
     playPlace();
     setPending(null);
-    maybeBot();
   };
 
   // place uses the ghost cell
@@ -225,25 +267,6 @@ export const HUD: React.FC = () => {
       return;
     }
     placeAt(ghostCell.x, ghostCell.y);
-  };
-
-  const maybeBot = () => {
-    setTimeout(() => {
-      const cur = state.current;
-      const p = state.players[cur];
-      if (p?.isBot && !state.winnerIds) {
-        const best = botMove(state, cur);
-        if (!best) dispatch({ type: "SKIP", pid: cur });
-        else
-          dispatch({
-            type: "PLACE",
-            pid: cur,
-            pieceId: best.pieceId,
-            shape: best.shape,
-            at: best.at,
-          });
-      }
-    }, 200);
   };
 
   // confetti when game ends
@@ -281,7 +304,7 @@ export const HUD: React.FC = () => {
           flip();
         }
       } else if (e.key === "Enter" || e.key === " ") {
-        if (pending && hoverCell) {
+        if (pending && ghostCell) {
           e.preventDefault();
           placeAtHover();
         }
@@ -321,9 +344,52 @@ export const HUD: React.FC = () => {
       } catch {}
   };
 
+  const introScale = introA.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const introOpacity = introA.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
+  React.useEffect(() => {
+    if (!state.meta?.rollPending && !state.meta?.showedRollOnce) {
+      // Safety run on first render of a match
+      introA.setValue(0);
+      Animated.timing(introA, {
+        toValue: 1,
+        duration: 420,
+        useNativeDriver: Platform.OS !== "web",
+      }).start();
+    }
+  }, []);
+
   return (
-    <View style={{ gap: 16, alignItems: "stretch" }}>
+    <View
+      style={{
+        gap: 16,
+        alignItems: "stretch",
+        paddingTop: insets.top + TOPBAR_H + 8,
+      }}
+    >
+      <TopBar
+        matchId={state.meta?.matchId}
+        botThinking={botThinking}
+        onHelpPress={showShortcutsNow}
+      />
       <View style={{ alignItems: "center" }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            // alignItems: "center",
+            width: "100%",
+            paddingHorizontal: 8,
+          }}
+        >
+          <AppLogo size={120} />
+        </View>
         <Text style={{ color: pal.text, fontSize: 18, fontWeight: "700" }}>
           Turn:{" "}
           <Text style={{ color: curColorHex, fontWeight: "900" }}>
@@ -332,7 +398,7 @@ export const HUD: React.FC = () => {
           {who && <> [{who}]</>}
         </Text>
       </View>
-      {state.meta?.matchId && <MatchBadge id={state.meta.matchId} />}
+
       {/* ====== Wide layout: Board (center) + Right palette rail (collapsible) ====== */}
       {isWide ? (
         <View
@@ -345,73 +411,81 @@ export const HUD: React.FC = () => {
         >
           {/* Left column: board + control row */}
           <View style={{ alignItems: "center" }}>
-            <Board
-              ghost={
-                pending && ghostCell
-                  ? { shape: pending.shape, at: ghostCell }
-                  : null
-              }
-              onGhostMove={(cell) => setGhostCell(cell)}
-            />
+            <Animated.View
+              style={{
+                transform: [{ scale: introScale }],
+                opacity: introOpacity,
+              }}
+            >
+              <Board
+                cellSize={cell}
+                ghost={
+                  pending && ghostCell
+                    ? { shape: pending.shape, at: ghostCell }
+                    : null
+                }
+                onGhostMove={(cell) => setGhostCell(cell)}
+              />
 
-            {/* Controls under the board */}
-            <View style={{ alignItems: "center", marginTop: 12 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  gap: 12,
-                  justifyContent: "center",
-                }}
-              >
-                <ControlButton
-                  label="Rotate"
-                  onPress={rotate}
-                  bg={pal.btnBg}
-                  activeBg={pal.accent}
-                  textColor={pal.btnText}
-                  textColorActive="#fff"
-                  Icon={RotateIcon}
-                  IconActive={RotateIconFilled}
-                  disabled={!pending}
-                />
-                <ControlButton
-                  label="Flip"
-                  onPress={flip}
-                  bg={pal.btnBg}
-                  activeBg={pal.accent}
-                  textColor={pal.btnText}
-                  textColorActive="#fff"
-                  Icon={FlipIcon}
-                  IconActive={FlipIconFilled}
-                  disabled={!pending}
-                />
-                <ControlButton
-                  label="Pick & Place"
-                  onPress={placeAtHover}
-                  bg={pal.accent}
-                  activeBg={pal.accent}
-                  textColor="#fff"
-                  textColorActive="#fff"
-                  Icon={PlaceIcon}
-                  IconActive={PlaceIconFilled}
-                  disabled={!canPlaceHere}
-                />
+              {/* Controls under the board */}
+              <View style={{ alignItems: "center", marginTop: 12 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 12,
+                    justifyContent: "center",
+                  }}
+                >
+                  <ControlButton
+                    label="Rotate"
+                    onPress={rotate}
+                    bg={pal.btnBg}
+                    activeBg={pal.accent}
+                    textColor={pal.btnText}
+                    textColorActive="#fff"
+                    Icon={RotateIcon}
+                    IconActive={RotateIconFilled}
+                    disabled={!pending}
+                  />
+                  <ControlButton
+                    label="Flip"
+                    onPress={flip}
+                    bg={pal.btnBg}
+                    activeBg={pal.accent}
+                    textColor={pal.btnText}
+                    textColorActive="#fff"
+                    Icon={FlipIcon}
+                    IconActive={FlipIconFilled}
+                    disabled={!pending}
+                  />
+                  <ControlButton
+                    label="Pick & Place"
+                    onPress={placeAtHover}
+                    bg={pal.accent}
+                    activeBg={pal.accent}
+                    textColor="#fff"
+                    textColorActive="#fff"
+                    Icon={PlaceIcon}
+                    IconActive={PlaceIconFilled}
+                    disabled={!canPlaceHere}
+                  />
+                </View>
+                <Text
+                  style={{
+                    color: pal.text,
+                    opacity: 0.7,
+                    marginTop: 6,
+                    textAlign: "center",
+                  }}
+                >
+                  {pending
+                    ? canPlaceHere
+                      ? "Rotate/Flip then press Pick & Place (or click a legal cell)."
+                      : "Rotate/Flip and hover a legal cell to enable Pick & Place."
+                    : "Pick a piece from the palette to begin."}
+                </Text>
               </View>
-              <Text
-                style={{
-                  color: pal.text,
-                  opacity: 0.7,
-                  marginTop: 6,
-                  textAlign: "center",
-                }}
-              >
-                {pending
-                  ? canPlaceHere
-                    ? "Rotate/Flip then press Pick & Place (or click a legal cell)."
-                    : "Rotate/Flip and hover a legal cell to enable Pick & Place."
-                  : "Pick a piece from the palette to begin."}
-              </Text>
-            </View>
+            </Animated.View>
           </View>
 
           {/* Right column: collapsible palette rail (same visual height as board) */}
@@ -462,7 +536,7 @@ export const HUD: React.FC = () => {
                 style={{ flex: 1 }}
                 contentContainerStyle={{ padding: 8, gap: 8 }}
               >
-                <PiecePalette onChoose={onChoose} />
+                <PiecePalette onChoose={handleChoose} />
               </ScrollView>
             ) : (
               <View style={{ flex: 1 }} />
@@ -473,14 +547,22 @@ export const HUD: React.FC = () => {
         /* ====== Narrow layout: board top, controls, then palette below ====== */
         <>
           <View style={{ alignItems: "center" }}>
-            <Board
-              ghost={
-                pending && ghostCell
-                  ? { shape: pending.shape, at: ghostCell }
-                  : null
-              }
-              onGhostMove={(cell) => setGhostCell(cell)}
-            />
+            <Animated.View
+              style={{
+                transform: [{ scale: introScale }],
+                opacity: introOpacity,
+              }}
+            >
+              <Board
+                cellSize={cell}
+                ghost={
+                  pending && ghostCell
+                    ? { shape: pending.shape, at: ghostCell }
+                    : null
+                }
+                onGhostMove={(cell) => setGhostCell(cell)}
+              />
+            </Animated.View>
           </View>
 
           {/* Controls under the board */}
@@ -557,7 +639,7 @@ export const HUD: React.FC = () => {
             >
               <PiecePalette
                 onChoose={(id, shape) => {
-                  setPending({ pieceId: id, shape });
+                  handleChoose(id, shape);
                   setSheetOpen(false);
                 }}
               />
@@ -595,14 +677,6 @@ export const HUD: React.FC = () => {
         </Pressable>
       </View>
 
-      {!showShortcuts && (
-        <HelpButton
-          onPress={showShortcutsNow}
-          position="top-right" // 👈 stays clear of the Palette FAB
-          offset={16}
-        />
-      )}
-
       {/* Dice prompt while in roll phase (each human in turn) */}
       {rollPending && nextRollerColor && (
         <DiceRollOverlay
@@ -625,7 +699,7 @@ export const HUD: React.FC = () => {
       {state.winnerIds && (
         <View
           style={{
-            position: "fixed" as any,
+            position: "absolute",
             left: 0,
             top: 0,
             right: 0,
@@ -644,10 +718,7 @@ export const HUD: React.FC = () => {
               backgroundColor: pal.card,
               borderRadius: 12,
               padding: 24,
-              shadowColor: "#000",
-              shadowOpacity: 0.25,
-              shadowRadius: 20,
-              shadowOffset: { width: 0, height: 10 },
+              ...shadow(10),
             }}
           >
             <Text
@@ -656,24 +727,63 @@ export const HUD: React.FC = () => {
                 fontSize: 22,
                 fontWeight: "800",
                 marginBottom: 8,
+                textAlign: "center",
               }}
             >
               Game Over 🎉
             </Text>
-            <Text style={{ color: pal.text, marginBottom: 16 }}>
+            <Text
+              style={{ color: pal.text, marginBottom: 16, textAlign: "center" }}
+            >
               Winner{state.winnerIds.length > 1 ? "s" : ""}:{" "}
-              <Text style={{ fontWeight: "700" }}>
-                {state.winnerIds
-                  .map((id) => state.players[id].color.toUpperCase())
-                  .join(", ")}
+              <Text
+                style={{
+                  color: pal.player[state.winnerIds![0]].fill,
+                  fontWeight: "900",
+                }}
+              >
+                {state.players[state.winnerIds![0]].color.toUpperCase()}
               </Text>
             </Text>
             <View style={{ gap: 6, marginBottom: 16 }}>
-              {state.players.map((p) => (
-                <Text key={p.id} style={{ color: pal.text, opacity: 0.9 }}>
-                  {p.color.toUpperCase()} — score: {p.score}
-                </Text>
-              ))}
+              {state.players.map((p) => {
+                const isWinner = state.winnerIds?.includes(p.id);
+                const colorHex = pal.player[p.id].fill;
+                const bg = isWinner ? "#ffffff10" : "transparent";
+                const border = isWinner ? pal.accent : "transparent";
+                const weight = isWinner ? ("800" as const) : ("600" as const);
+
+                return (
+                  <View
+                    key={p.id}
+                    style={{
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      borderRadius: 8,
+                      backgroundColor: bg,
+                      borderWidth: isWinner ? 1 : 0,
+                      borderColor: border,
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <Text style={{ color: colorHex, fontWeight: weight }}>
+                      {p.color.toUpperCase()}
+                    </Text>
+                    <Text
+                      style={{
+                        color: pal.text,
+                        opacity: 0.9,
+                        fontWeight: weight,
+                      }}
+                    >
+                      score: {p.score}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
             <View
               style={{

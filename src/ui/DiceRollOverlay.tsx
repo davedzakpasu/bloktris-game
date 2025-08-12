@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Pressable, Text, View } from "react-native";
+import {
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { shadow } from "../helpers/shadow";
 import { usePalette } from "./theme";
 
 type RollRow = { color: string; value: number };
@@ -13,13 +22,14 @@ export const DiceRollOverlay: React.FC<{
   onDone?: () => void; // result: dismiss
 }> = ({ mode, rollerColor, onRoll, rolls, onDone }) => {
   const pal = usePalette();
+  const { width: winW } = useWindowDimensions();
 
   // entry spring
   const scaleIn = useRef(new Animated.Value(0.9)).current;
   useEffect(() => {
     Animated.spring(scaleIn, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       friction: 7,
     }).start();
   }, []);
@@ -27,7 +37,7 @@ export const DiceRollOverlay: React.FC<{
   return (
     <View
       style={{
-        position: "fixed" as any,
+        position: "absolute",
         left: 0,
         right: 0,
         top: 0,
@@ -44,11 +54,8 @@ export const DiceRollOverlay: React.FC<{
           backgroundColor: pal.card,
           borderRadius: 12,
           padding: 20,
-          minWidth: 360,
-          shadowColor: "#000",
-          shadowOpacity: 0.25,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 10 },
+          width: Math.min(360, winW - 32),
+          ...shadow(10),
           gap: 12,
         }}
       >
@@ -93,20 +100,20 @@ const Prompt: React.FC<{
         toValue: 1,
         duration: 1200,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }),
       Animated.sequence([
         Animated.timing(squash, {
           toValue: 1,
           duration: 420,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(squash, {
           toValue: 0,
           duration: 780,
           easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]),
     ]).start(() => setAnimating(false));
@@ -260,15 +267,16 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
   const center = size / 2 - dot / 2;
 
   // pip positions
-  const TL = { left: off, top: off };
-  const TR = { right: off, top: off };
-  const BL = { left: off, bottom: off };
-  const BR = { right: off, bottom: off };
-  const ML = { left: off, top: center };
-  const MR = { right: off, top: center };
-  const C = { left: center, top: center };
+  type Abs = { left?: number; right?: number; top?: number; bottom?: number };
+  const TL: Abs = { left: off, top: off };
+  const TR: Abs = { right: off, top: off };
+  const BL: Abs = { left: off, bottom: off };
+  const BR: Abs = { right: off, bottom: off };
+  const ML: Abs = { left: off, top: center };
+  const MR: Abs = { right: off, top: center };
+  const C: Abs = { left: center, top: center };
 
-  const pipsByFace: Record<number, Array<React.CSSProperties>> = {
+  const pipsByFace: Record<number, Abs[]> = {
     1: [C],
     2: [TL, BR],
     3: [TL, C, BR],
@@ -284,7 +292,7 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
         height: size,
         borderRadius: 12,
         backgroundColor: "#fff",
-        boxShadow: "0 6px 18px rgba(0,0,0,.25)" as any,
+        ...shadow(10),
         position: "relative",
       }}
     >

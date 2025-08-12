@@ -1,5 +1,6 @@
 import React from "react";
 import { Platform, Pressable, Text, View } from "react-native";
+import { shadow } from "../helpers/shadow";
 import { usePalette } from "./theme";
 
 const KeyCap: React.FC<{ label: string }> = ({ label }) => {
@@ -41,10 +42,7 @@ export const ShortcutTooltip: React.FC<{
         borderColor: pal.grid,
         maxWidth: 760,
         alignSelf: "center",
-        shadowColor: "#000",
-        shadowOpacity: 0.12,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
+        ...shadow(8),
         gap: 8,
       }}
     >

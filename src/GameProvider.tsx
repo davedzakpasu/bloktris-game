@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo, useReducer } from "react";
-import { ALL_PIECE_IDS } from "./pieces";
+import { ALL_PIECE_IDS, PIECE_SIZES } from "./pieces";
 import {
   BOARD_SIZE,
   PLAYER_COLORS, // ["blue","yellow","red","green"]
@@ -7,7 +7,13 @@ import {
   hasAnyLegalMove,
   isGameOver,
 } from "./rules";
-import { GameState, PlayerColor, PlayerId, PlayerState } from "./types";
+import {
+  GameState,
+  PieceId,
+  PlayerColor,
+  PlayerId,
+  PlayerState,
+} from "./types";
 
 /** ---------- Seeded RNG utilities ---------- */
 function mulberry32(seed: number) {
@@ -55,9 +61,13 @@ function buildPlayers(humans: 1 | 4): PlayerState[] {
   }));
 }
 
+function scoreForRemaining(remaining: PieceId[]) {
+  return remaining.reduce((sum, id) => sum + PIECE_SIZES[id], 0);
+}
+
 /** ---------- Actions ---------- */
 type Action =
-  | { type: "START"; humans: number; seed?: string } // seed optional
+  | { type: "START"; humans: 1 | 4; seed?: string } // seed optional
   | { type: "HUMAN_ROLL" } // rolls for next human in queue
   | {
       type: "PLACE";
@@ -83,7 +93,7 @@ const initial: GameState = {
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "START": {
-      const humans = (action.humans === 1 ? 1 : 4) as 1 | 4;
+      const humans = action.humans;
       const players = buildPlayers(humans);
 
       // seed & match id
@@ -95,10 +105,15 @@ function reducer(state: GameState, action: Action): GameState {
         .filter((p) => !p.isBot)
         .map((p) => p.id);
 
+      const playersWithScores = players.map((p) => ({
+        ...p,
+        score: scoreForRemaining(p.remaining),
+      }));
+
       return {
         ...state,
         board: makeEmptyBoard(),
-        players,
+        players: playersWithScores,
         current: 0, // temp
         history: [],
         winnerIds: null,
@@ -187,8 +202,17 @@ function reducer(state: GameState, action: Action): GameState {
         }
       }
 
+      resolved.sort((a, b) => b.value - a.value || a.id - b.id);
+
+      if (hasTies()) {
+        // final deterministic tie-break
+        resolved = resolved
+          .map((r) => ({ ...r, value: r.value })) // (no change)
+          .sort((a, b) => b.value - a.value || a.id - b.id);
+      }
+
       // 6) sort & remap to Blue→Yellow→Red→Green order
-      resolved.sort((a, b) => b.value - a.value);
+      resolved.sort((a, b) => b.value - a.value || a.id - b.id);
       const order = resolved.map((r) => r.id); // e.g. [2,0,3,1]
       const reordered = order.map((oldId, idx) => {
         const p = state.players[oldId];
@@ -221,7 +245,7 @@ function reducer(state: GameState, action: Action): GameState {
     }
 
     case "PLACE": {
-      const next: GameState = applyMove(
+      const next = applyMove(
         state,
         action.pid,
         action.pieceId,
@@ -229,32 +253,35 @@ function reducer(state: GameState, action: Action): GameState {
         action.at
       );
 
-      next.players = next.players.map((p: PlayerState) => ({
+      // refresh active (pass is final) + recompute scores in ONE place
+      next.players = next.players.map((p) => ({
         ...p,
-        active: hasAnyLegalMove(next.players, p.id, next.board),
+        active: p.active && hasAnyLegalMove(next.players, p.id, next.board),
+        score: scoreForRemaining(p.remaining),
       }));
 
       if (isGameOver(next.players, next.board) && !next.winnerIds) {
         const best = Math.min(...next.players.map((p) => p.score));
         next.winnerIds = next.players
           .filter((p) => p.score === best)
-          .map((p) => p.id as PlayerId);
+          .map((p) => p.id);
       }
       return next;
     }
 
     case "SKIP": {
-      const players = state.players.map((p) =>
-        p.id === action.pid ? { ...p, active: false } : p
-      );
+      const players = state.players
+        .map((p) => (p.id === action.pid ? { ...p, active: false } : { ...p }))
+        .map((p) => ({ ...p, score: scoreForRemaining(p.remaining) }));
+
       const current = ((state.current + 1) % 4) as PlayerId;
       const winnerIds = isGameOver(players, state.board)
-        ? players
-            .slice()
-            .sort((a, b) => a.score - b.score)
-            .slice(0, 1)
-            .map((p) => p.id as PlayerId)
+        ? (() => {
+            const best = Math.min(...players.map((p) => p.score));
+            return players.filter((p) => p.score === best).map((p) => p.id);
+          })()
         : null;
+
       return { ...state, players, current, winnerIds };
     }
 

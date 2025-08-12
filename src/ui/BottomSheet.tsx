@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { shadow } from "../../src/helpers/shadow";
 import { usePalette } from "./theme";
 
 export const BottomSheet: React.FC<{
@@ -39,7 +40,7 @@ export const BottomSheet: React.FC<{
   useEffect(() => {
     Animated.spring(y, {
       toValue: open ? H - MAX : H,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       bounciness: 6,
     }).start();
   }, [open, MAX]);
@@ -57,7 +58,7 @@ export const BottomSheet: React.FC<{
         const shouldClose = g.vy > 0.6 || at > H - MAX / 2;
         Animated.spring(y, {
           toValue: shouldClose ? H : H - MAX,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }).start(() => {
           if (shouldClose) onClose();
         });
@@ -94,10 +95,7 @@ export const BottomSheet: React.FC<{
             backgroundColor: pal.card,
             borderTopLeftRadius: 16,
             borderTopRightRadius: 16,
-            shadowColor: "#000",
-            shadowOpacity: 0.25,
-            shadowRadius: 20,
-            shadowOffset: { width: 0, height: -8 },
+            ...shadow(10),
             zIndex: 100,
             // smoother on some browsers:
             ...(Platform.OS === "web"

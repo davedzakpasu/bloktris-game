@@ -1,5 +1,6 @@
 import React from "react";
 import { Platform, Pressable, Text } from "react-native";
+import { shadow } from "../../helpers/shadow";
 import { usePalette } from "../theme";
 
 export const PALETTE_FAB_HEIGHT = 44;
@@ -20,10 +21,7 @@ export const PaletteFab: React.FC<{ onPress: () => void }> = ({ onPress }) => {
           backgroundColor: pal.accent,
           alignItems: "center",
           justifyContent: "center",
-          shadowColor: "#000",
-          shadowOpacity: 0.25,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
+          ...shadow(10),
           zIndex: 40,
         },
         Platform.OS === "web" ? ({ position: "fixed" } as any) : null,
