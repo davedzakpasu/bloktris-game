@@ -26,30 +26,30 @@ export async function playInvalid() {
 export async function playStart() {
   try {
     if (isWeb) {
-      // Web fallback: quick beep using WebAudio
-      const ctx = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "triangle";
-      o.frequency.value = 660; // E5
-      g.gain.value = 0.0001;
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start();
-      const t0 = ctx.currentTime;
-      g.gain.exponentialRampToValueAtTime(0.15, t0 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
-      o.stop(t0 + 0.3);
-      return;
-    } else {
+      //   // Web fallback: quick beep using WebAudio
+      //   const ctx = new (window.AudioContext ||
+      //     (window as any).webkitAudioContext)();
+      //   const o = ctx.createOscillator();
+      //   const g = ctx.createGain();
+      //   o.type = "triangle";
+      //   o.frequency.value = 660; // E5
+      //   g.gain.value = 0.0001;
+      //   o.connect(g);
+      //   g.connect(ctx.destination);
+      //   o.start();
+      //   const t0 = ctx.currentTime;
+      //   g.gain.exponentialRampToValueAtTime(0.15, t0 + 0.02);
+      //   g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+      //   o.stop(t0 + 0.3);
+      //   return;
+      // } else {
       // Native: play a bundled start.wav via expo-av
       const { Audio } = require("expo-av");
       const sound = new Audio.Sound();
       await sound.loadAsync(require("../assets/sfx/start.wav"));
       await sound.playAsync();
-      // unload after ~1s
-      setTimeout(() => sound.unloadAsync().catch(() => {}), 1000);
+      // unload after ~2s
+      setTimeout(() => sound.unloadAsync().catch(() => {}), 2000);
     }
   } catch {}
 }

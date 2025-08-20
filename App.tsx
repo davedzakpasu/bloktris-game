@@ -12,17 +12,27 @@ const Home: React.FC = () => {
   const pal = usePalette();
   const { state, dispatch } = useGame();
   const [mode, setMode] = useState<1 | 4 | null>(null);
+  const [screen, setScreen] = useState<"home" | "game">("home");
 
   useEffect(() => {
     initSfx();
   }, []);
 
+  // Start a brand-new match only when user picked a mode
   useEffect(() => {
     if (mode) dispatch({ type: "START", humans: mode });
-  }, [mode]);
+  }, [mode, dispatch]);
 
   // Menu
-  if (!mode) {
+  if (screen === "home") {
+    // show Resume only for an active, started match (not finished)
+    const canResume =
+      state.meta?.hydrated === true &&
+      state.players.length === 4 &&
+      !state.winnerIds &&
+      (state.history.length > 0 || // started
+        // or there are tiles on the board (cheap check)
+        state.board.some((row) => row.some((cell) => cell !== null)));
     return (
       <View
         style={{
@@ -39,7 +49,10 @@ const Home: React.FC = () => {
         </Text>
         <View style={{ flexDirection: "row", gap: 12 }}>
           <Pressable
-            onPress={() => setMode(1)}
+            onPress={() => {
+              setMode(1);
+              setScreen("game");
+            }}
             style={{
               padding: 12,
               backgroundColor: pal.accent,
@@ -51,7 +64,10 @@ const Home: React.FC = () => {
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => setMode(4)}
+            onPress={() => {
+              setMode(4);
+              setScreen("game");
+            }}
             style={{ padding: 12, backgroundColor: pal.btnBg, borderRadius: 8 }}
           >
             <Text style={{ color: pal.btnText, fontWeight: "700" }}>
@@ -59,6 +75,24 @@ const Home: React.FC = () => {
             </Text>
           </Pressable>
         </View>
+        {/* Show Resume if a saved match is present (hydrated provider) */}
+        {canResume && (
+          <Pressable
+            onPress={() => setScreen("game")} // no START — uses hydrated state
+            style={{
+              marginTop: 12,
+              padding: 12,
+              backgroundColor: pal.btnBg,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: pal.grid,
+            }}
+          >
+            <Text style={{ color: pal.btnText, fontWeight: "700" }}>
+              Resume match
+            </Text>
+          </Pressable>
+        )}
       </View>
     );
   }
@@ -83,7 +117,12 @@ const Home: React.FC = () => {
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
       <View style={{ flex: 1, padding: 16, backgroundColor: pal.boardBg }}>
-        <HUD />
+        <HUD
+          onExitHome={() => {
+            setScreen("home");
+            setMode(null); // ensures START won't fire when returning to menu
+          }}
+        />
       </View>
     </ScrollView>
   );

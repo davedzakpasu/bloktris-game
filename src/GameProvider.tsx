@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useMemo, useReducer } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+} from "react";
+import { loadMatch, saveMatch } from "./persist";
 import { ALL_PIECE_IDS, PIECE_SIZES } from "./pieces";
 import {
   BOARD_SIZE,
@@ -65,6 +73,150 @@ function scoreForRemaining(remaining: PieceId[]) {
   return remaining.reduce((sum, id) => sum + PIECE_SIZES[id], 0);
 }
 
+function normalizeBoard(b: any): (PlayerId | null)[][] {
+  const size = BOARD_SIZE;
+  if (!Array.isArray(b) || b.length === 0) return makeEmptyBoard();
+  const h = b.length;
+  const w = Array.isArray(b[0]) ? b[0].length : 0;
+  const out = Array.from({ length: size }, (_, y) =>
+    Array.from({ length: size }, (_, x) =>
+      y < h && x < w ? b[y][x] ?? null : null
+    )
+  );
+  return out;
+}
+
+function boardHasAnyTiles(b: (PlayerId | null)[][]): boolean {
+  for (let y = 0; y < b.length; y++)
+    for (let x = 0; x < b[0].length; x++) if (b[y][x] !== null) return true;
+  return false;
+}
+
+function boardFromHistory(
+  history: Array<{
+    player: PlayerId;
+    at: { x: number; y: number };
+    shape: number[][];
+  }>
+): (PlayerId | null)[][] {
+  const b = makeEmptyBoard();
+  for (const mv of history) {
+    const { player, at, shape } = mv || {};
+    if (!shape || !Array.isArray(shape)) continue;
+    for (let yy = 0; yy < shape.length; yy++) {
+      for (let xx = 0; xx < shape[0].length; xx++) {
+        if (shape[yy][xx]) {
+          const gx = at.x + xx,
+            gy = at.y + yy;
+          if (gx >= 0 && gy >= 0 && gx < BOARD_SIZE && gy < BOARD_SIZE) {
+            b[gy][gx] = player;
+          }
+        }
+      }
+    }
+  }
+  return b;
+}
+
+function sanitizeSavedState(raw: any): GameState | null {
+  try {
+    // Basic shape checks
+    if (!raw || !Array.isArray(raw.players) || raw.players.length !== 4)
+      return null;
+
+    let board = normalizeBoard(raw.board);
+    const history = Array.isArray(raw.history) ? raw.history : [];
+
+    // If the saved board is empty but we have history, rebuild it.
+    if (!boardHasAnyTiles(board) && history.length) {
+      board = boardFromHistory(history);
+    }
+
+    // Coerce players array to ids [0..3] and clamp fields
+    const playersById = new Map<number, any>();
+    for (const p of raw.players) playersById.set(p.id, p);
+    const players: PlayerState[] = [0, 1, 2, 3].map((id) => {
+      const p = playersById.get(id) || {};
+      const remaining = Array.isArray(p.remaining)
+        ? (p.remaining.filter((pid: any) =>
+            (ALL_PIECE_IDS as any).includes(pid)
+          ) as PieceId[])
+        : [...ALL_PIECE_IDS];
+      return {
+        id: id as PlayerId,
+        color: (p.color ?? PLAYER_COLORS[id]) as PlayerColor,
+        remaining,
+        hasPlayed: !!p.hasPlayed,
+        isBot: !!p.isBot,
+        score: 0, // recompute below
+        active: true, // recompute below
+      };
+    });
+
+    // Recompute hasPlayed from history (more reliable than old saves)
+    const played = new Set<number>();
+    for (const m of history) {
+      if (m && typeof m.player === "number") played.add(m.player);
+    }
+    for (const p of players) p.hasPlayed = p.hasPlayed || played.has(p.id);
+
+    // Recompute scores & active flags
+    for (const p of players) p.score = scoreForRemaining(p.remaining);
+
+    // Current player clamp
+    let current: PlayerId = ((typeof raw.current === "number"
+      ? raw.current
+      : 0) % 4) as PlayerId;
+
+    // Winner ids normalization (ensure null or int[])
+    let winnerIds: PlayerId[] | null = null;
+    if (Array.isArray(raw.winnerIds) && raw.winnerIds.length) {
+      winnerIds = raw.winnerIds.map((n: any) => (Number(n) % 4) as PlayerId);
+    }
+
+    // Meta defaults
+    const meta = {
+      ...(raw.meta || {}),
+      matchId: raw.meta?.matchId || makeMatchId(),
+      rollPending: !!raw.meta?.rollPending && false, // never resume into roll UI
+      showedRollOnce: true, // suppress roll overlay after resume
+      hydrated: true,
+    };
+
+    // Build preliminary state
+    let s: GameState = { board, players, current, history, winnerIds, meta };
+
+    // Refresh active flags using current rules
+    s.players = s.players.map((p) => ({
+      ...p,
+      active: hasAnyLegalMove(s.players, p.id, s.board),
+      score: scoreForRemaining(p.remaining),
+    }));
+
+    // If persisted state forgot winners but game is effectively over, compute them
+    if (!s.winnerIds && isGameOver(s.players, s.board)) {
+      const best = Math.min(...s.players.map((p) => p.score));
+      s.winnerIds = s.players.filter((p) => p.score === best).map((p) => p.id);
+    }
+
+    // Clamp current to a still-active slot if the saved one is unusable
+    if (!s.players[s.current]?.active) {
+      // rotate until we find someone who can move, or keep as-is if nobody can
+      for (let i = 1; i <= 4; i++) {
+        const pid = ((s.current + i) % 4) as PlayerId;
+        if (s.players[pid].active) {
+          s = { ...s, current: pid };
+          break;
+        }
+      }
+    }
+
+    return s;
+  } catch {
+    return null;
+  }
+}
+
 /** ---------- Actions ---------- */
 type Action =
   | { type: "START"; humans: 1 | 4; seed?: string } // seed optional
@@ -77,7 +229,8 @@ type Action =
       at: { x: number; y: number };
     }
   | { type: "SKIP"; pid: PlayerId }
-  | { type: "MARK_ROLL_SHOWN" };
+  | { type: "MARK_ROLL_SHOWN" }
+  | { type: "HYDRATE"; payload: GameState };
 
 /** ---------- Initial ---------- */
 const initial: GameState = {
@@ -176,6 +329,8 @@ function reducer(state: GameState, action: Action): GameState {
 
       // 5) tie-break deterministically using incrementing salts
       let resolved = botFilled.slice();
+      const tieBreaks: Record<PlayerId, { from: number; to: number }> =
+        {} as any;
       const nextValue = (id: PlayerId, iter: number) =>
         seededDie(`${rngSeed}-TB-${id}-${iter}`)();
 
@@ -196,7 +351,11 @@ function reducer(state: GameState, action: Action): GameState {
             // re-roll tied seats only
             for (const idx of g) {
               const id = resolved[idx].id;
-              resolved[idx] = { id, value: nextValue(id, iter) };
+              const from = resolved[idx].value;
+              const to = nextValue(id, iter);
+              if (!(id in tieBreaks)) tieBreaks[id] = { from, to };
+              else tieBreaks[id].to = to;
+              resolved[idx] = { id, value: to };
             }
           }
         }
@@ -239,6 +398,7 @@ function reducer(state: GameState, action: Action): GameState {
             color: baseColors[i],
             value: r.value,
           })),
+          tieBreaks,
           showedRollOnce: false,
         },
       };
@@ -292,6 +452,11 @@ function reducer(state: GameState, action: Action): GameState {
       };
     }
 
+    case "HYDRATE": {
+      const s = sanitizeSavedState(action.payload);
+      return s ? s : state;
+    }
+
     default:
       return state;
   }
@@ -307,6 +472,36 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [state, dispatch] = useReducer(reducer, initial);
+
+  // Hydrate once on mount if a saved match exists
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    (async () => {
+      const saved = await loadMatch();
+      if (saved && saved.players?.length === 4) {
+        dispatch({ type: "HYDRATE", payload: saved });
+        hydratedRef.current = true;
+      }
+    })();
+  }, []);
+
+  // Auto-save whenever a "real" game state exists
+  useEffect(() => {
+    if (state.players.length === 0) return; // skip initial empty
+    // Save on next tick so heavy renders aren’t blocked
+    const id = requestAnimationFrame(() => {
+      saveMatch(state);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [
+    state.board,
+    state.players,
+    state.current,
+    state.history.length,
+    state.winnerIds,
+    state.meta,
+  ]);
+
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Animated,
+  BackHandler,
   Platform,
   Pressable,
   ScrollView,
@@ -12,8 +13,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { botMove } from "../bots";
 import { useGame } from "../GameProvider";
 import { shadow } from "../helpers/shadow";
+import { clearMatch, saveMatch } from "../persist";
 import { BOARD_SIZE, isLegalMove } from "../rules";
-import type { PieceId } from "../types";
+import type { GameState, PieceId, PlayerId } from "../types";
 import { AppLogo } from "./AppLogo";
 import { Board } from "./Board";
 import { BottomSheet } from "./BottomSheet";
@@ -66,18 +68,36 @@ function rotate90(m: Shape): Shape {
     for (let x = 0; x < w; x++) out[x][h - 1 - y] = m[y][x];
   return out;
 }
+
 function flipH(m: Shape): Shape {
   return m.map((r) => [...r].reverse());
 }
 
-export const HUD: React.FC = () => {
+function firstLegalNear(
+  state: GameState,
+  pid: PlayerId,
+  shape: number[][],
+  seedCell: { x: number; y: number }
+) {
+  const maxR = BOARD_SIZE; // small board; cheap spiral search
+  for (let r = 0; r < maxR; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const at = { x: seedCell.x + dx, y: seedCell.y + dy };
+        if (isLegalMove(state, pid, shape, at)) return at;
+      }
+    }
+  }
+  return seedCell; // fallback
+}
+
+export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   const { state, dispatch } = useGame();
   const pal = usePalette();
   const { width: vw } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isWide = Platform.OS === "web" && vw >= 1024;
   const TOPBAR_H = 48;
-
   const introA = React.useRef(new Animated.Value(0)).current;
   const [showShortcuts, setShowShortcuts] = useState(true);
   const [pending, setPending] = useState<{
@@ -89,7 +109,6 @@ export const HUD: React.FC = () => {
   );
   const [confettiOn, setConfettiOn] = useState(false);
   const [railOpen, setRailOpen] = useState(true); // ← collapsible rail
-
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // compute a responsive cell size primarily from available width
@@ -118,14 +137,32 @@ export const HUD: React.FC = () => {
   const who = isVsBots ? (cur?.isBot ? "bot" : "you") : null;
   const curColorHex = cur ? pal.player[cur.id].fill : pal.text;
 
+  // Any pre-game overlay active? (rolling to determine seats or showing results once)
+  const preGameOverlayUp =
+    !!state.meta?.rollPending ||
+    (!!state.meta?.lastRoll && !state.meta?.showedRollOnce);
+
   // Show prompt if we need the human to roll
   const rollPending = !!state.meta?.rollPending;
   const rollQueue = state.meta?.rollQueue ?? [];
   const nextRollerId = rollQueue[0];
-  const nextRollerColor =
+  // Neutral label: colors aren’t assigned yet
+  const nextRollerLabel =
     nextRollerId != null
-      ? state.players.find((p) => p.id === nextRollerId)?.color
+      ? (() => {
+          const humans = state.players.filter((p) => !p.isBot).length;
+          return humans === 1 ? "You" : `Player ${nextRollerId + 1}`;
+        })()
       : undefined;
+
+  const currentRollValue =
+    nextRollerId != null
+      ? state.meta?.rolls?.find((r) => r.id === nextRollerId)?.value ?? null
+      : null;
+
+  const partial = (state.meta?.rolls ?? [])
+    .sort((a, b) => a.id - b.id) // seats P1..P4
+    .map((r) => ({ seat: r.id + 1, value: r.value }));
 
   const dismissRollResults = () => {
     // SFX
@@ -205,7 +242,9 @@ export const HUD: React.FC = () => {
   // choose from palette -> spawn ghost centered
   const handleChoose = (pieceId: PieceId, shape: Shape) => {
     setPending({ pieceId, shape });
-    setGhostCell(centerCellFor(shape));
+    const seed = centerCellFor(shape);
+    const at = firstLegalNear(state, state.current, shape, seed);
+    setGhostCell(at);
   };
 
   // rotate/flip controls under board
@@ -274,17 +313,91 @@ export const HUD: React.FC = () => {
     if (state.winnerIds && !confettiOn) setConfettiOn(true);
   }, [state.winnerIds]);
 
-  const restart = () => {
+  const restart = async () => {
+    // Clear the finished match before starting a new one
+    try {
+      await clearMatch();
+    } catch {}
     const humans = state.players.filter((p) => !p.isBot).length as 1 | 4;
     dispatch({ type: "START", humans });
     setPending(null);
     setConfettiOn(false);
   };
 
+  // --- mid-game exit guard ---
+  const isMidGame = !!(
+    !state.winnerIds &&
+    (state.history.length > 0 || state.players.some((p) => p.hasPlayed))
+  );
+
+  const [confirmExitOpen, setConfirmExitOpen] = useState(false);
+  const requestExit = () => {
+    if (!onExitHome) return;
+    if (isMidGame) setConfirmExitOpen(true);
+    else onExitHome();
+  };
+
+  // keep the latest onExitHome in a ref to avoid stale closures
+  const onExitHomeRef = React.useRef<undefined | (() => void)>(onExitHome);
+  React.useEffect(() => {
+    onExitHomeRef.current = onExitHome;
+  }, [onExitHome]);
+
+  const confirmExit = () => {
+    setConfirmExitOpen(false);
+    // call on the next tick to let the overlay close cleanly
+    requestAnimationFrame(() => {
+      if (onExitHomeRef.current) {
+        try {
+          saveMatch(state);
+          onExitHomeRef.current();
+        } catch (e) {
+          console.error("onExitHome threw:", e);
+        }
+      } else {
+        // helpful during dev if the prop wasn't passed
+        console.warn(
+          "[HUD] onExitHome is undefined. Did you pass <HUD onExitHome={...} /> from your App/Home navigator?"
+        );
+      }
+    });
+  };
+
+  const cancelExit = () => setConfirmExitOpen(false);
+
+  // Android hardware back → confirm
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (isMidGame && !confirmExitOpen) {
+        setConfirmExitOpen(true);
+        return true; // prevent default
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [isMidGame, confirmExitOpen]);
+
+  // Web: warn on refresh/close if mid-game
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isMidGame) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isMidGame]);
+
   // Shortcuts (web)
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const onKey = (e: KeyboardEvent) => {
+      // Don’t allow shortcuts while roll overlay is up
+      if (preGameOverlayUp) return;
+
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       const editing =
@@ -317,7 +430,7 @@ export const HUD: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pending, hoverCell]);
+  }, [pending, hoverCell, preGameOverlayUp]);
 
   // Tooltip persistence
   useEffect(() => {
@@ -377,6 +490,7 @@ export const HUD: React.FC = () => {
         matchId={state.meta?.matchId}
         botThinking={botThinking}
         onHelpPress={showShortcutsNow}
+        onHomePress={requestExit}
       />
       <View style={{ alignItems: "center" }}>
         <View
@@ -390,13 +504,19 @@ export const HUD: React.FC = () => {
         >
           <AppLogo size={120} />
         </View>
-        <Text style={{ color: pal.text, fontSize: 18, fontWeight: "700" }}>
-          Turn:{" "}
-          <Text style={{ color: curColorHex, fontWeight: "900" }}>
-            {cur?.color.toUpperCase()}
+        {preGameOverlayUp ? (
+          <Text style={{ color: pal.text, fontSize: 18, fontWeight: "700" }}>
+            Rolling for order…
           </Text>
-          {who && <> [{who}]</>}
-        </Text>
+        ) : (
+          <Text style={{ color: pal.text, fontSize: 18, fontWeight: "700" }}>
+            Turn:{" "}
+            <Text style={{ color: curColorHex, fontWeight: "900" }}>
+              {cur?.color.toUpperCase()}
+            </Text>
+            {who && <> [{who}]</>}
+          </Text>
+        )}
       </View>
 
       {/* ====== Wide layout: Board (center) + Right palette rail (collapsible) ====== */}
@@ -536,7 +656,10 @@ export const HUD: React.FC = () => {
                 style={{ flex: 1 }}
                 contentContainerStyle={{ padding: 8, gap: 8 }}
               >
-                <PiecePalette onChoose={handleChoose} />
+                <PiecePalette
+                  onChoose={handleChoose}
+                  disabled={preGameOverlayUp}
+                />
               </ScrollView>
             ) : (
               <View style={{ flex: 1 }} />
@@ -642,10 +765,98 @@ export const HUD: React.FC = () => {
                   handleChoose(id, shape);
                   setSheetOpen(false);
                 }}
+                disabled={preGameOverlayUp}
               />
             </ScrollView>
           </BottomSheet>
         </>
+      )}
+
+      {/* Confirm leave mid-game */}
+      {confirmExitOpen && (
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <View
+            style={{
+              width: 480,
+              maxWidth: "92%",
+              borderRadius: 12,
+              backgroundColor: pal.card,
+              padding: 20,
+              borderWidth: 1,
+              borderColor: pal.grid,
+            }}
+          >
+            <Text
+              style={{
+                color: pal.text,
+                fontSize: 18,
+                fontWeight: "800",
+                textAlign: "center",
+                marginBottom: 8,
+              }}
+            >
+              Leave this game?
+            </Text>
+            <Text
+              style={{
+                color: pal.text,
+                opacity: 0.85,
+                textAlign: "center",
+                marginBottom: 16,
+              }}
+            >
+              Your current match will be discarded.
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 12,
+                justifyContent: "center",
+              }}
+            >
+              <Pressable
+                onPress={cancelExit}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  backgroundColor: pal.btnBg,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: pal.grid,
+                }}
+              >
+                <Text style={{ color: pal.btnText, fontWeight: "700" }}>
+                  Stay
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={confirmExit}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  backgroundColor: pal.accent,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>
+                  Leave game
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       )}
 
       {showShortcuts && (
@@ -678,11 +889,13 @@ export const HUD: React.FC = () => {
       </View>
 
       {/* Dice prompt while in roll phase (each human in turn) */}
-      {rollPending && nextRollerColor && (
+      {rollPending && nextRollerLabel && (
         <DiceRollOverlay
           mode="prompt"
-          rollerColor={nextRollerColor}
+          rollerLabel={nextRollerLabel}
           onRoll={() => dispatch({ type: "HUMAN_ROLL" })}
+          revealedValue={currentRollValue}
+          partial={partial}
         />
       )}
 
@@ -691,6 +904,7 @@ export const HUD: React.FC = () => {
         <DiceRollOverlay
           mode="result"
           rolls={state.meta.lastRoll}
+          tieBreaks={state.meta?.tieBreaks || {}}
           onDone={dismissRollResults}
         />
       )}
@@ -805,6 +1019,28 @@ export const HUD: React.FC = () => {
                   Play again
                 </Text>
               </Pressable>
+              {onExitHome && (
+                <Pressable
+                  onPress={async () => {
+                    try {
+                      await clearMatch();
+                    } catch {}
+                    onExitHome();
+                  }}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    backgroundColor: pal.btnBg,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: pal.grid,
+                  }}
+                >
+                  <Text style={{ color: pal.btnText, fontWeight: "700" }}>
+                    Main menu
+                  </Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </View>

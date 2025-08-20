@@ -16,11 +16,23 @@ type Mode = "prompt" | "result";
 
 export const DiceRollOverlay: React.FC<{
   mode: Mode;
-  rollerColor?: string; // prompt: whose turn to roll (e.g., "blue")
+  rollerLabel?: string; // prompt: label to show (e.g., "You" or "Player 2")
   onRoll?: () => void; // prompt: dispatch HUMAN_ROLL (deterministic in reducer)
   rolls?: RollRow[]; // result: final color-ordered rolls
   onDone?: () => void; // result: dismiss
-}> = ({ mode, rollerColor, onRoll, rolls, onDone }) => {
+  revealedValue?: number | null; // the actual roll value once reducer sets it
+  partial?: Array<{ seat: number; value: number | null }>;
+  tieBreaks?: Record<number, { from: number; to: number }>;
+}> = ({
+  mode,
+  rollerLabel,
+  onRoll,
+  rolls,
+  onDone,
+  revealedValue,
+  partial = [],
+  tieBreaks = {},
+}) => {
   const pal = usePalette();
   const { width: winW } = useWindowDimensions();
 
@@ -60,9 +72,14 @@ export const DiceRollOverlay: React.FC<{
         }}
       >
         {mode === "prompt" ? (
-          <Prompt rollerColor={rollerColor} onRoll={onRoll} />
+          <Prompt
+            rollerLabel={rollerLabel}
+            onRoll={onRoll}
+            revealedValue={revealedValue}
+            partial={partial}
+          />
         ) : (
-          <Result rolls={rolls || []} onDone={onDone} />
+          <Result rolls={rolls || []} onDone={onDone} tieBreaks={tieBreaks} />
         )}
       </Animated.View>
     </View>
@@ -71,11 +88,14 @@ export const DiceRollOverlay: React.FC<{
 
 /* ---------- Prompt: animated tumbling die + Roll button ---------- */
 const Prompt: React.FC<{
-  rollerColor?: string;
+  rollerLabel?: string;
   onRoll?: () => void;
-}> = ({ rollerColor, onRoll }) => {
+  revealedValue?: number | null;
+  partial: Array<{ seat: number; value: number | null }>;
+}> = ({ rollerLabel, onRoll, revealedValue, partial }) => {
   const pal = usePalette();
-  const [face, setFace] = useState<number>(1);
+  // 0 = blank face until we reveal the true value
+  const [face, setFace] = useState<number>(0);
   const [animating, setAnimating] = useState(false);
   const spin = useRef(new Animated.Value(0)).current; // 0..1
   const squash = useRef(new Animated.Value(0)).current; // 0..1
@@ -87,6 +107,14 @@ const Prompt: React.FC<{
     },
     []
   );
+
+  // When the store publishes the final seeded value, snap the face to it.
+  useEffect(() => {
+    if (revealedValue != null) {
+      setFace(revealedValue);
+      setAnimating(false);
+    }
+  }, [revealedValue]);
 
   const startRollAnim = () => {
     if (animating) return;
@@ -118,15 +146,8 @@ const Prompt: React.FC<{
       ]),
     ]).start(() => setAnimating(false));
 
-    // shuffle faces quickly for ~650ms (purely visual)
-    const t0 = Date.now();
-    const tick = () => {
-      setFace(1 + Math.floor(Math.random() * 6));
-      if (Date.now() - t0 < 1100) {
-        raf.current = requestAnimationFrame(tick);
-      }
-    };
-    raf.current = requestAnimationFrame(tick);
+    // keep the die blank while it tumbles; snap to revealedValue above
+    setFace(0);
 
     // trigger deterministic roll in reducer
     onRoll?.();
@@ -155,7 +176,7 @@ const Prompt: React.FC<{
           color: pal.text,
         }}
       >
-        {rollerColor ? rollerColor.toUpperCase() : "Player"} — roll the die
+        {(rollerLabel ?? "Player").toUpperCase()} — roll the die
       </Text>
       <View
         style={{
@@ -170,6 +191,34 @@ const Prompt: React.FC<{
           }}
         >
           <DiePips face={face} />
+          {/* Overlayed Roll button on top of the die (hidden while animating) */}
+          {!animating && (
+            <Pressable
+              onPress={startRollAnim}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 12,
+                backgroundColor: "rgba(0,0,0,.0)",
+              }}
+            >
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  backgroundColor: pal.accent,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Roll</Text>
+              </View>
+            </Pressable>
+          )}
         </Animated.View>
       </View>
       <Pressable
@@ -192,16 +241,66 @@ const Prompt: React.FC<{
         Highest becomes <Text style={{ fontWeight: "800" }}>BLUE</Text>, then
         YELLOW, RED, GREEN.
       </Text>
+      {/* Partial results (live as humans roll) */}
+      {partial.length > 0 && (
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 8,
+            justifyContent: "center",
+            marginTop: 4,
+          }}
+        >
+          {partial.map((r, i) => (
+            <View
+              key={i}
+              style={{
+                minWidth: 54,
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: "#ffffff0e",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: pal.text, opacity: 0.8, fontSize: 12 }}>
+                P{r.seat}
+              </Text>
+              <Text
+                style={{ color: pal.text, fontWeight: "800", fontSize: 16 }}
+              >
+                {r.value ?? "—"}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
     </>
   );
 };
 
 /* ---------- Result: show four final dice with pips ---------- */
-const Result: React.FC<{ rolls: RollRow[]; onDone?: () => void }> = ({
-  rolls,
-  onDone,
-}) => {
+const Result: React.FC<{
+  rolls: RollRow[];
+  onDone?: () => void;
+  tieBreaks?: Record<number, { from: number; to: number }>;
+}> = ({ rolls, onDone, tieBreaks = {} }) => {
   const pal = usePalette();
+  const [reveal, setReveal] = useState(0);
+  useEffect(() => {
+    setReveal(0);
+    // progressive reveal for fun
+    const t1 = setTimeout(() => setReveal(1), 150);
+    const t2 = setTimeout(() => setReveal(2), 350);
+    const t3 = setTimeout(() => setReveal(3), 550);
+    const t4 = setTimeout(() => setReveal(4), 750);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
+  }, [rolls]);
   return (
     <>
       <Text
@@ -221,8 +320,15 @@ const Result: React.FC<{ rolls: RollRow[]; onDone?: () => void }> = ({
           const labelHex = r.color === "yellow" ? "#bfa500" : baseHex; // darker gold for contrast
 
           return (
-            <View key={i} style={{ alignItems: "center", gap: 6 }}>
-              <DiePips face={r.value} />
+            <View
+              key={i}
+              style={{
+                alignItems: "center",
+                gap: 6,
+                opacity: i < reveal ? 1 : 0.15,
+              }}
+            >
+              <DiePips face={i < reveal ? r.value : 0} />
               <Text style={{ fontWeight: "900", color: labelHex }}>
                 {r.color.toUpperCase()}
               </Text>
@@ -233,6 +339,24 @@ const Result: React.FC<{ rolls: RollRow[]; onDone?: () => void }> = ({
           );
         })}
       </View>
+      {!!Object.keys(tieBreaks).length && (
+        <View style={{ marginTop: 6 }}>
+          <Text
+            style={{
+              color: pal.text,
+              opacity: 0.85,
+              textAlign: "center",
+              fontSize: 12,
+            }}
+          >
+            Tie-breaks applied for seats{" "}
+            {Object.keys(tieBreaks)
+              .map((k) => Number(k) + 1)
+              .sort((a, b) => a - b)
+              .join(", ")}
+          </Text>
+        </View>
+      )}
       <Pressable
         onPress={onDone}
         accessibilityRole="button"
@@ -277,6 +401,7 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
   const C: Abs = { left: center, top: center };
 
   const pipsByFace: Record<number, Abs[]> = {
+    0: [], // blank face until reveal
     1: [C],
     2: [TL, BR],
     3: [TL, C, BR],

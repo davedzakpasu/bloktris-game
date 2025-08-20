@@ -85,8 +85,12 @@ export interface MatchMeta {
    */
   lastRoll?: { color: PlayerColor; value: number }[];
 
+  tieBreaks?: Record<PlayerId, { from: number; to: number }>;
+
   /** Prevents re-showing the results overlay within the same match. */
   showedRollOnce?: boolean;
+
+  hydrated?: boolean;
 }
 
 export interface GameState {

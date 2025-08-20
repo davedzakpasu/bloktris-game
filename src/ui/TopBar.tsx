@@ -22,11 +22,20 @@ type IconFC = React.FC<{ size?: number; color?: string }>;
 let HelpGlyph: IconFC = ({ size = 18, color = "#fff" }) => (
   <Text style={{ color, fontSize: size, fontWeight: "900" }}>?</Text>
 );
+let HomeGlyph: IconFC = ({ size = 18, color = "#fff" }) => (
+  <Text style={{ color, fontSize: size, fontWeight: "900" }}>⌂</Text>
+);
+
 try {
   const icons = require("./icons/icons");
   if (icons.HelpIcon) {
     HelpGlyph = ({ size = 18, color = "#fff" }) => (
       <icons.HelpIcon size={size} color={color} />
+    );
+  }
+  if (icons.HomeIcon) {
+    HomeGlyph = ({ size = 18, color = "#fff" }) => (
+      <icons.HomeIcon size={size} color={color} />
     );
   }
 } catch {}
@@ -37,7 +46,8 @@ export const TopBar: React.FC<{
   matchId?: string;
   botThinking?: boolean;
   onHelpPress?: () => void;
-}> = ({ matchId, botThinking, onHelpPress }) => {
+  onHomePress?: () => void;
+}> = ({ matchId, botThinking, onHelpPress, onHomePress }) => {
   const pal = usePalette();
   const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
@@ -78,7 +88,7 @@ export const TopBar: React.FC<{
       {/* Center: (optional) title/logo spot */}
       <View />
 
-      {/* Right: bot thinking pill + help */}
+      {/* Right: bot thinking pill + help + home */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <Animated.View
           style={{
@@ -134,6 +144,24 @@ export const TopBar: React.FC<{
         >
           <HelpGlyph size={18} color="#fff" />
         </Pressable>
+        {onHomePress && (
+          <Pressable
+            onPress={onHomePress}
+            accessibilityRole="button"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: pal.btnBg,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: pal.grid,
+            }}
+          >
+            <HomeGlyph size={18} color={pal.btnText} />
+          </Pressable>
+        )}
       </View>
     </View>
   );

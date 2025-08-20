@@ -103,6 +103,41 @@ const DIAG4 = [
   { x: -1, y: -1 },
 ];
 
+// Collect empty cells that are diagonal-adjacent to pid (and not side-adjacent).
+function diagonalAnchors(board: (PlayerId | null)[][], pid: PlayerId): Coord[] {
+  const out: Coord[] = [];
+  for (let y = 0; y < BOARD_SIZE; y++) {
+    for (let x = 0; x < BOARD_SIZE; x++) {
+      if (board[y][x] !== null) continue; // must be empty
+      // must have at least one diagonal neighbor of same color
+      let hasDiag = false;
+      for (const d of DIAG4) {
+        const nx = x + d.x,
+          ny = y + d.y;
+        if (nx < 0 || ny < 0 || nx >= BOARD_SIZE || ny >= BOARD_SIZE) continue;
+        if (board[ny][nx] === pid) {
+          hasDiag = true;
+          break;
+        }
+      }
+      if (!hasDiag) continue;
+      // must not touch same color by side at this anchor cell
+      let sideTouch = false;
+      for (const d of DIR4) {
+        const nx = x + d.x,
+          ny = y + d.y;
+        if (nx < 0 || ny < 0 || nx >= BOARD_SIZE || ny >= BOARD_SIZE) continue;
+        if (board[ny][nx] === pid) {
+          sideTouch = true;
+          break;
+        }
+      }
+      if (!sideTouch) out.push({ x, y });
+    }
+  }
+  return out;
+}
+
 export function touchSideSame(
   board: (PlayerId | null)[][],
   pid: PlayerId,
@@ -241,12 +276,29 @@ export function hasAnyLegalMove(
     winnerIds: null,
   };
   const p = players[pid];
+  // candidate anchors
+  const anchors = !p.hasPlayed
+    ? [PLAYER_CORNERS[pid]] // first move: corner only
+    : diagonalAnchors(board, pid);
+
+  if (anchors.length === 0) return false;
+
+  // Try placing each orientation such that some filled cell aligns at an anchor.
   for (const pieceId of p.remaining) {
-    for (const o of ORIENTATIONS[pieceId]) {
-      // (Optionally iterate only candidate cells)
-      for (let y = 0; y < 20; y++)
-        for (let x = 0; x < 20; x++)
-          if (isLegalMove(dummy, pid, o, { x, y })) return true;
+    const orients = ORIENTATIONS[pieceId];
+    for (const o of orients) {
+      // precompute filled local offsets of this orientation
+      const cells: Coord[] = [];
+      for (let yy = 0; yy < o.length; yy++)
+        for (let xx = 0; xx < o[0].length; xx++)
+          if (o[yy][xx]) cells.push({ x: xx, y: yy });
+
+      for (const anchor of anchors) {
+        for (const c of cells) {
+          const at = { x: anchor.x - c.x, y: anchor.y - c.y };
+          if (isLegalMove(dummy, pid, o, at)) return true;
+        }
+      }
     }
   }
   return false;

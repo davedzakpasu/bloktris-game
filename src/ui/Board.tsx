@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, GestureResponderEvent, Platform, View } from "react-native";
-import Svg, { Line, Rect } from "react-native-svg";
+import Svg, { Defs, Line, Pattern, Rect } from "react-native-svg";
 import { useGame } from "../GameProvider";
 import { BOARD_SIZE, isLegalMove, PLAYER_CORNERS } from "../rules";
 import type { Orientation } from "../types";
@@ -239,41 +239,6 @@ export const Board: React.FC<{
         ))}
       </Svg>
 
-      {/* 3) Ghost preview (draggable, shake if illegal) */}
-      {ghost && (
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: ghost.at.x * CELL,
-            top: ghost.at.y * CELL,
-            transform: [{ translateX: ghostOk ? 0 : ghostShake }],
-            opacity: 0.9,
-          }}
-        >
-          <Svg
-            width={ghost.shape[0].length * CELL}
-            height={ghost.shape.length * CELL}
-          >
-            {ghost.shape.map((r, yy) =>
-              r.map((v, xx) =>
-                v ? (
-                  <Rect
-                    key={`ghost-${xx}-${yy}`}
-                    x={xx * CELL}
-                    y={yy * CELL}
-                    width={CELL}
-                    height={CELL}
-                    fill={ghostOk ? pal.ghostOk : pal.ghostBad}
-                    opacity={0.6}
-                  />
-                ) : null
-              )
-            )}
-          </Svg>
-        </Animated.View>
-      )}
-
       {/* 4) Placed tiles (animated overlay) */}
       {grid.map((row, y) =>
         row.map((owner, x) =>
@@ -291,12 +256,80 @@ export const Board: React.FC<{
         )
       )}
 
-      {/* 5) First-move corner pulse cue */}
+      {/* 5) Ghost preview (draggable, shake if illegal) — now ABOVE tiles */}
+      {ghost && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: ghost.at.x * CELL,
+            top: ghost.at.y * CELL,
+            transform: [{ translateX: ghostOk ? 0 : ghostShake }],
+            opacity: 0.92,
+            zIndex: 5,
+          }}
+        >
+          <Svg
+            width={ghost.shape[0].length * CELL}
+            height={ghost.shape.length * CELL}
+          >
+            {/* Striped fill for *illegal* ghost: diagonal hatching */}
+            <Defs>
+              <Pattern
+                id="ghostBadStripes"
+                patternUnits="userSpaceOnUse"
+                width={8}
+                height={8}
+                patternTransform="rotate(45)"
+              >
+                {/* base tint */}
+                <Rect
+                  x={0}
+                  y={0}
+                  width={8}
+                  height={8}
+                  fill={pal.ghostBad}
+                  opacity={0.45}
+                />
+                {/* repeated vertical line (rotated into diagonals by patternTransform) */}
+                <Line
+                  x1={0}
+                  y1={0}
+                  x2={0}
+                  y2={8}
+                  stroke="#fff"
+                  strokeWidth={2}
+                  opacity={0.25}
+                />
+              </Pattern>
+            </Defs>
+            {ghost.shape.map((r, yy) =>
+              r.map((v, xx) =>
+                v ? (
+                  <Rect
+                    key={`ghost-${xx}-${yy}`}
+                    x={xx * CELL}
+                    y={yy * CELL}
+                    width={CELL}
+                    height={CELL}
+                    fill={ghostOk ? pal.ghostOk : "url(#ghostBadStripes)"}
+                    opacity={ghostOk ? 0.55 : 1}
+                    stroke={ghostOk ? pal.grid : "#fff"}
+                    strokeWidth={ghostOk ? 1 : 2}
+                  />
+                ) : null
+              )
+            )}
+          </Svg>
+        </Animated.View>
+      )}
+
+      {/* 6) First-move corner pulse cue */}
       {showCornerCue && (
         <CornerPulse x={corner.x} y={corner.y} color={pal.accent} cell={CELL} />
       )}
 
-      {/* 6) Input capture layer for dragging the ghost */}
+      {/* 7) Input capture layer for dragging the ghost */}
       <View
         onStartShouldSetResponder={() => true}
         onResponderGrant={moveToEvent}
