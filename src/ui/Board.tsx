@@ -111,15 +111,15 @@ export const Board: React.FC<{
   // NEW: draggable ghost controlled by HUD
   ghost?: { shape: Orientation; at: { x: number; y: number } } | null;
   onGhostMove?: (cell: { x: number; y: number }) => void;
-  cellSize: number;
+  cellSize?: number;
   // Keep showing placed tiles etc.
-}> = ({ ghost, onGhostMove, cellSize }) => {
+}> = ({ ghost, onGhostMove, cellSize = 24 }) => {
+  const CELL = cellSize;
   const { state } = useGame();
   const pal = usePalette();
 
   const grid = useMemo(() => state.board, [state.board]);
 
-  const CELL = cellSize;
   const width = BOARD_SIZE * CELL;
   const height = BOARD_SIZE * CELL;
 

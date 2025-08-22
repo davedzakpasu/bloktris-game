@@ -25,6 +25,10 @@ export const DiceRollOverlay: React.FC<{
   tieBreaks?: Record<number, { from: number; to: number }>;
   rollerKey?: number;
   lockRollButton?: boolean;
+  // Auto-play (bots)
+  autoPlay?: boolean;
+  autoPlayValue?: number | null;
+  onAutoDone?: () => void;
 }> = ({
   mode,
   rollerLabel,
@@ -36,6 +40,9 @@ export const DiceRollOverlay: React.FC<{
   tieBreaks = {},
   rollerKey,
   lockRollButton,
+  autoPlay = false,
+  autoPlayValue = null,
+  onAutoDone,
 }) => {
   const pal = usePalette();
   const { width: winW } = useWindowDimensions();
@@ -84,6 +91,9 @@ export const DiceRollOverlay: React.FC<{
             partial={partial}
             rollerKey={rollerKey}
             lockRollButton={lockRollButton}
+            autoPlay={autoPlay}
+            autoPlayValue={autoPlayValue}
+            onAutoDone={onAutoDone}
           />
         ) : (
           <Result rolls={rolls || []} onDone={onDone} tieBreaks={tieBreaks} />
@@ -101,6 +111,9 @@ const Prompt: React.FC<{
   partial: Array<{ seat: number; value: number | null }>;
   rollerKey?: number;
   lockRollButton?: boolean;
+  autoPlay?: boolean;
+  autoPlayValue?: number | null;
+  onAutoDone?: () => void;
 }> = ({
   rollerLabel,
   onRoll,
@@ -108,19 +121,24 @@ const Prompt: React.FC<{
   partial,
   rollerKey,
   lockRollButton,
+  autoPlay = false,
+  autoPlayValue = null,
+  onAutoDone,
 }) => {
   const pal = usePalette();
-  const [face, setFace] = useState<number>(1);
+  // 0 = blank face before each roll
+  const [face, setFace] = useState<number>(0);
   const [animating, setAnimating] = useState(false);
   const spin = useRef(new Animated.Value(0)).current; // 0..1
   const squash = useRef(new Animated.Value(0)).current; // 0..1
   const raf = useRef<number | null>(null);
+  const HOLD_MS = 1200;
 
   // Reset the prompt when the seat changes
   useEffect(() => {
     if (raf.current) cancelAnimationFrame(raf.current);
     setAnimating(false);
-    setFace(1);
+    setFace(0);
     spin.setValue(0);
     squash.setValue(0);
   }, [rollerKey]);
@@ -140,6 +158,56 @@ const Prompt: React.FC<{
       setAnimating(false);
     }
   }, [revealedValue]);
+
+  // Auto-play for bots: tumble -> reveal known value -> hold -> notify HUD
+  useEffect(() => {
+    if (!autoPlay || autoPlayValue == null) return;
+    // kick the same animation as startRollAnim, but without calling onRoll
+    setAnimating(true);
+    spin.setValue(0);
+    squash.setValue(0);
+    Animated.parallel([
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.timing(squash, {
+          toValue: 1,
+          duration: 200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(squash, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    // quick shuffle while spinning; snap to final
+    const t0 = Date.now();
+    const tick = () => {
+      if (!animating) return;
+      if (Date.now() - t0 > 450) {
+        setFace(autoPlayValue);
+        setAnimating(false);
+        setTimeout(() => onAutoDone?.(), HOLD_MS);
+        return;
+      }
+      setFace(1 + Math.floor(Math.random() * 6));
+      raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    // cleanup
+    return () => {
+      if (raf.current) cancelAnimationFrame(raf.current);
+    };
+  }, [autoPlay, autoPlayValue]);
 
   const startRollAnim = () => {
     if (animating) return;
