@@ -34,7 +34,7 @@ export const MatchBadge: React.FC<{ id: string }> = ({ id }) => {
       }}
     >
       <Text style={{ color: pal.text, fontWeight: "800", fontSize: 10 }}>
-        Match ID :
+        Match ID:
       </Text>
       <Text style={{ color: pal.text, opacity: 0.8, fontSize: 10 }}>{id}</Text>
       {/* <Pressable

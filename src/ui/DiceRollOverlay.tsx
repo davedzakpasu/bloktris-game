@@ -23,6 +23,8 @@ export const DiceRollOverlay: React.FC<{
   revealedValue?: number | null; // the actual roll value once reducer sets it
   partial?: Array<{ seat: number; value: number | null }>;
   tieBreaks?: Record<number, { from: number; to: number }>;
+  rollerKey?: number;
+  lockRollButton?: boolean;
 }> = ({
   mode,
   rollerLabel,
@@ -32,6 +34,8 @@ export const DiceRollOverlay: React.FC<{
   revealedValue,
   partial = [],
   tieBreaks = {},
+  rollerKey,
+  lockRollButton,
 }) => {
   const pal = usePalette();
   const { width: winW } = useWindowDimensions();
@@ -57,7 +61,8 @@ export const DiceRollOverlay: React.FC<{
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "rgba(0,0,0,.5)",
-        zIndex: 200,
+        zIndex: 5000,
+        elevation: 24,
       }}
     >
       <Animated.View
@@ -77,6 +82,8 @@ export const DiceRollOverlay: React.FC<{
             onRoll={onRoll}
             revealedValue={revealedValue}
             partial={partial}
+            rollerKey={rollerKey}
+            lockRollButton={lockRollButton}
           />
         ) : (
           <Result rolls={rolls || []} onDone={onDone} tieBreaks={tieBreaks} />
@@ -92,14 +99,31 @@ const Prompt: React.FC<{
   onRoll?: () => void;
   revealedValue?: number | null;
   partial: Array<{ seat: number; value: number | null }>;
-}> = ({ rollerLabel, onRoll, revealedValue, partial }) => {
+  rollerKey?: number;
+  lockRollButton?: boolean;
+}> = ({
+  rollerLabel,
+  onRoll,
+  revealedValue,
+  partial,
+  rollerKey,
+  lockRollButton,
+}) => {
   const pal = usePalette();
-  // 0 = blank face until we reveal the true value
-  const [face, setFace] = useState<number>(0);
+  const [face, setFace] = useState<number>(1);
   const [animating, setAnimating] = useState(false);
   const spin = useRef(new Animated.Value(0)).current; // 0..1
   const squash = useRef(new Animated.Value(0)).current; // 0..1
   const raf = useRef<number | null>(null);
+
+  // Reset the prompt when the seat changes
+  useEffect(() => {
+    if (raf.current) cancelAnimationFrame(raf.current);
+    setAnimating(false);
+    setFace(1);
+    spin.setValue(0);
+    squash.setValue(0);
+  }, [rollerKey]);
 
   useEffect(
     () => () => {
@@ -111,6 +135,7 @@ const Prompt: React.FC<{
   // When the store publishes the final seeded value, snap the face to it.
   useEffect(() => {
     if (revealedValue != null) {
+      if (raf.current) cancelAnimationFrame(raf.current);
       setFace(revealedValue);
       setAnimating(false);
     }
@@ -126,30 +151,37 @@ const Prompt: React.FC<{
     Animated.parallel([
       Animated.timing(spin, {
         toValue: 1,
-        duration: 1200,
+        duration: 500,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: Platform.OS !== "web",
       }),
       Animated.sequence([
         Animated.timing(squash, {
           toValue: 1,
-          duration: 420,
+          duration: 180,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(squash, {
           toValue: 0,
-          duration: 780,
+          duration: 320,
           easing: Easing.out(Easing.quad),
           useNativeDriver: Platform.OS !== "web",
         }),
       ]),
-    ]).start(() => setAnimating(false));
+    ]).start(); // keep 'animating' true until revealedValue arrives
 
-    // keep the die blank while it tumbles; snap to revealedValue above
-    setFace(0);
+    // quick shuffle while spinning; snap to true value in the effect above
+    const t0 = Date.now();
+    const tick = () => {
+      // stop shuffling once true value is known or after ~450ms
+      if (revealedValue != null || Date.now() - t0 > 450 || !animating) return;
+      setFace(1 + Math.floor(Math.random() * 6));
+      raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
 
-    // trigger deterministic roll in reducer
+    // trigger deterministic roll in reducer (sets revealedValue)
     onRoll?.();
   };
 
@@ -191,46 +223,18 @@ const Prompt: React.FC<{
           }}
         >
           <DiePips face={face} />
-          {/* Overlayed Roll button on top of the die (hidden while animating) */}
-          {!animating && (
-            <Pressable
-              onPress={startRollAnim}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: 0,
-                bottom: 0,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 12,
-                backgroundColor: "rgba(0,0,0,.0)",
-              }}
-            >
-              <View
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  backgroundColor: pal.accent,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Roll</Text>
-              </View>
-            </Pressable>
-          )}
         </Animated.View>
       </View>
       <Pressable
         onPress={startRollAnim}
-        disabled={animating}
+        disabled={animating || !!lockRollButton}
         style={{
           alignSelf: "center",
           paddingHorizontal: 16,
           paddingVertical: 10,
           borderRadius: 8,
           backgroundColor: pal.accent,
-          opacity: animating ? 0.7 : 1,
+          opacity: animating || lockRollButton ? 0.7 : 1,
         }}
       >
         <Text style={{ color: "#fff", fontWeight: "800" }}>
@@ -289,11 +293,11 @@ const Result: React.FC<{
   const [reveal, setReveal] = useState(0);
   useEffect(() => {
     setReveal(0);
-    // progressive reveal for fun
-    const t1 = setTimeout(() => setReveal(1), 150);
-    const t2 = setTimeout(() => setReveal(2), 350);
-    const t3 = setTimeout(() => setReveal(3), 550);
-    const t4 = setTimeout(() => setReveal(4), 750);
+    // progressive reveal ~1s apart (bots appear paced)
+    const t1 = setTimeout(() => setReveal(1), 250);
+    const t2 = setTimeout(() => setReveal(2), 1250);
+    const t3 = setTimeout(() => setReveal(3), 2250);
+    const t4 = setTimeout(() => setReveal(4), 3250);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);

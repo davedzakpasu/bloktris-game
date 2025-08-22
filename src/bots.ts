@@ -1,5 +1,5 @@
 import { PIECES } from "./pieces";
-import { isLegalMove, orientationsOf } from "./rules";
+import { BOARD_SIZE, isLegalMove, orientationsOf } from "./rules";
 import { Coord, GameState, PlayerId } from "./types";
 
 // Count potential future anchors (empty diagonals after placing)
@@ -18,7 +18,7 @@ function mobilityEstimate(state: GameState, shape: number[][], at: Coord) {
       ]) {
         const nx = gx + d.x,
           ny = gy + d.y;
-        if (nx < 0 || ny < 0 || nx >= 20 || ny >= 20) continue;
+        if (nx < 0 || ny < 0 || nx >= BOARD_SIZE || ny >= BOARD_SIZE) continue;
         if (state.board[ny][nx] === null) count++;
       }
     }
@@ -38,8 +38,8 @@ export function botMove(state: GameState, pid: PlayerId) {
   for (const pieceId of p.remaining) {
     const piece = PIECES[pieceId as keyof typeof PIECES];
     for (const shape of orientationsOf(piece)) {
-      for (let y = 0; y < 20; y++) {
-        for (let x = 0; x < 20; x++) {
+      for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
           const at = { x, y };
           if (!isLegalMove(state, pid, shape, at)) continue;
 

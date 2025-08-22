@@ -146,23 +146,29 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   const rollPending = !!state.meta?.rollPending;
   const rollQueue = state.meta?.rollQueue ?? [];
   const nextRollerId = rollQueue[0];
-  // Neutral label: colors aren’t assigned yet
+  // Which seat should the overlay show right now?
+  const [rollFreezeSeat, setRollFreezeSeat] = React.useState<number | null>(
+    null
+  );
+  const overlaySeatId = rollFreezeSeat ?? nextRollerId;
   const nextRollerLabel =
-    nextRollerId != null
+    overlaySeatId != null
       ? (() => {
           const humans = state.players.filter((p) => !p.isBot).length;
-          return humans === 1 ? "You" : `Player ${nextRollerId + 1}`;
+          return humans === 1 ? "You" : `Player ${overlaySeatId + 1}`;
         })()
       : undefined;
 
   const currentRollValue =
-    nextRollerId != null
-      ? state.meta?.rolls?.find((r) => r.id === nextRollerId)?.value ?? null
+    overlaySeatId != null
+      ? state.meta?.rolls?.find((r) => r.id === overlaySeatId)?.value ?? null
       : null;
 
   const partial = (state.meta?.rolls ?? [])
     .sort((a, b) => a.id - b.id) // seats P1..P4
     .map((r) => ({ seat: r.id + 1, value: r.value }));
+
+  const rollerKey = overlaySeatId ?? -1; // force prompt reset per-seat
 
   const dismissRollResults = () => {
     // SFX
@@ -893,9 +899,19 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
         <DiceRollOverlay
           mode="prompt"
           rollerLabel={nextRollerLabel}
-          onRoll={() => dispatch({ type: "HUMAN_ROLL" })}
+          onRoll={() => {
+            // remember which seat just rolled; unfreeze after 1s
+            const justRolled = nextRollerId;
+            dispatch({ type: "HUMAN_ROLL" });
+            if (justRolled != null) {
+              setRollFreezeSeat(justRolled);
+              setTimeout(() => setRollFreezeSeat(null), 1000);
+            }
+          }}
           revealedValue={currentRollValue}
           partial={partial}
+          rollerKey={rollerKey}
+          lockRollButton={rollFreezeSeat != null}
         />
       )}
 
