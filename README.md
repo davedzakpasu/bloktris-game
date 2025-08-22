@@ -23,20 +23,8 @@ Bloktris uses `index.ts` to register the root component, `App.tsx` for providers
     └── ui/
         ├── Board.tsx           # Grid, animated tiles, drag ghost, corner cue
         ├── HUD.tsx             # Gameplay UI, bot turns, dice overlays
-        └── theme.ts            # Light/dark palettes, player colors, accents
+        └── theme.ts            # Light/dark palettes, player colors, accents hues
 ```
-### Files & Modules
-
-| Path | Description |
-|---|---|
-| `src/GameProvider.tsx` | Central state manager using `useReducer` and seeded RNG utilities for deterministic dice rolls, player order, and match IDs. |
-| `src/rules.ts` / `src/pieces.ts` | Definitions of the 20×20 board, player corners, legal move logic, and the full set of 21 Blokus pieces with precomputed orientations. |
-| `src/bots.ts` | Simple AI that scores candidate moves by mobility, outward spread, and piece size to pick the best placement. |
-| `src/types.ts` | TypeScript models for pieces, players, and game state. |
-| `src/sfx.ts` | Sound effect helpers using `expo-av`, with a WebAudio fallback for the start chime. |
-| `src/ui/Board.tsx` | Renders the grid, animated tiles, draggable ghost preview, and first-move corner cue. |
-| `src/ui/HUD.tsx` | Orchestrates gameplay UI, responsive layout, and bot turns; shows dice-roll overlays and auto-plays bots after a delay. |
-| `src/ui/theme.ts` | Provides light/dark palettes with per-player colors and accent hues. |
 
 ### Key Concepts
 
@@ -60,4 +48,4 @@ Bloktris uses `index.ts` to register the root component, `App.tsx` for providers
 
 ### Testing
 
-> **Note:** No tests executed; repository is read-only.
+> **Note:** Using Jest testing framework.
