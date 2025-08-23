@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, GestureResponderEvent, Platform, View } from "react-native";
 import Svg, { Defs, Line, Pattern, Rect } from "react-native-svg";
+import { BOARD_SIZE } from "../constants";
 import { useGame } from "../GameProvider";
-import { BOARD_SIZE, isLegalMove, PLAYER_CORNERS } from "../rules";
+import { isLegalMove, PLAYER_CORNERS } from "../rules";
 import type { Orientation } from "../types";
 import { usePalette } from "./theme";
 
@@ -26,8 +27,8 @@ const AnimatedCell: React.FC<{
   }, [keyStr]);
   return (
     <Animated.View
-      pointerEvents="none"
       style={{
+        pointerEvents: "none",
         position: "absolute",
         left: x * cell,
         top: y * cell,
@@ -81,8 +82,8 @@ const CornerPulse: React.FC<{
 
   return (
     <Animated.View
-      pointerEvents="none"
       style={{
+        pointerEvents: "none",
         position: "absolute",
         left: x * cell,
         top: y * cell,
@@ -259,8 +260,8 @@ export const Board: React.FC<{
       {/* 5) Ghost preview (draggable, shake if illegal) — now ABOVE tiles */}
       {ghost && (
         <Animated.View
-          pointerEvents="none"
           style={{
+            pointerEvents: "none",
             position: "absolute",
             left: ghost.at.x * CELL,
             top: ghost.at.y * CELL,

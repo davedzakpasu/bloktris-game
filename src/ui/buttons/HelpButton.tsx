@@ -101,8 +101,8 @@ export const HelpButton: React.FC<{
 
   return (
     <View
-      pointerEvents="box-none"
       style={{
+        pointerEvents: "box-none",
         position: "absolute",
         top: effTop,
         bottom: effBottom,

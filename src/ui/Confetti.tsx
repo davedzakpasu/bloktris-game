@@ -89,8 +89,8 @@ export const Confetti: React.FC<{ count?: number; onDone?: () => void }> = ({
 
   return (
     <View
-      pointerEvents="none"
       style={{
+        pointerEvents: "none",
         position: "absolute",
         left: 0,
         top: 0,

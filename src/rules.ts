@@ -1,3 +1,4 @@
+import { BOARD_SIZE } from "./constants";
 import { ORIENTATIONS } from "./pieces";
 import {
   Coord,
@@ -60,7 +61,6 @@ export function orientationsOf(piece: PieceDef): Orientation[] {
   return [...set.values()];
 }
 
-export const BOARD_SIZE = 20;
 export const PLAYER_COLORS = ["blue", "yellow", "red", "green"] as const;
 export const PLAYER_CORNERS: Record<PlayerId, Coord> = {
   0: { x: 0, y: 0 },

@@ -62,8 +62,8 @@ export const TopBar: React.FC<{
 
   return (
     <View
-      pointerEvents="box-none"
       style={{
+        pointerEvents: "box-none",
         position: "absolute",
         left: 0,
         right: 0,

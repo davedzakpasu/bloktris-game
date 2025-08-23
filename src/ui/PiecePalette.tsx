@@ -250,8 +250,8 @@ const PieceCardBase: React.FC<{
       >
         {/* hover/press dark overlay */}
         <Animated.View
-          pointerEvents="none"
           style={{
+            pointerEvents: "none",
             position: "absolute",
             left: 0,
             right: 0,
@@ -264,8 +264,8 @@ const PieceCardBase: React.FC<{
         />
         {/* focus ring (soft outer glow) */}
         <Animated.View
-          pointerEvents="none"
           style={{
+            pointerEvents: "none",
             position: "absolute",
             left: -2,
             right: -2,
