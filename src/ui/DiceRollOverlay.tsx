@@ -11,7 +11,6 @@ import {
 import {
   CHIP_BG,
   OVERLAY_BACKDROP,
-  PIP_COLOR,
   PURE_BLACK,
   PURE_WHITE,
   YELLOW_TEXT,
@@ -37,7 +36,6 @@ export const DiceRollOverlay: React.FC<{
 
   /** PROMPT - bots auto-play */
   autoPlay?: boolean;
-  autoPlayValue?: number | null; // bot’s final value (from store)
   onAutoDone?: () => void; // tell HUD to advance to next bot
 
   /** RESULT */
@@ -102,7 +100,6 @@ const Prompt: React.FC<{
   partial?: PartialSeat[];
   rollerKey?: number | string;
   autoPlay?: boolean;
-  autoPlayValue?: number | null;
   onAutoDone?: () => void;
 }> = ({
   rollerLabel,
@@ -440,7 +437,7 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
   const MR = { right: off, top: center };
   const C = { left: center, top: center };
 
-  const pipsByFace: Record<number, Array<React.CSSProperties>> = {
+  const pipsByFace: Record<number, Array<ViewStyle>> = {
     0: [], // blank
     1: [C],
     2: [TL, BR],
@@ -461,20 +458,28 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
       shadowRadius: 12,
       width: size,
     },
-    pip: {
-      backgroundColor: PIP_COLOR,
-      borderRadius: dot / 2,
-      height: dot,
-      position: 'absolute',
-      width: dot,
-    },
+    // pip: {
+    //   backgroundColor: PIP_COLOR,
+    //   borderRadius: dot / 2,
+    //   height: dot,
+    //   position: 'absolute',
+    //   width: dot,
+    // },
   });
 
   return (
     <View style={styles.die}>
-      {(pipsByFace[face] || []).map((pos, i) => (
-        <View key={i} style={[styles.pip, pos as ViewStyle]} />
-      ))}
+      {(pipsByFace[face] || []).map((pos, i) => {
+        const dotStyle: ViewStyle = {
+          position: 'absolute',
+          width: dot,
+          height: dot,
+          borderRadius: dot / 2,
+          backgroundColor: '#111',
+          ...pos,
+        };
+        return <View key={i} style={dotStyle} />;
+      })}
     </View>
   );
 };
