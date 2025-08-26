@@ -6,10 +6,10 @@ import React, {
   useReducer,
   useRef,
 } from "react";
+import { BOARD_SIZE } from "./constants";
 import { loadMatch, saveMatch } from "./persist";
 import { ALL_PIECE_IDS, PIECE_SIZES } from "./pieces";
 import {
-  BOARD_SIZE,
   PLAYER_COLORS, // ["blue","yellow","red","green"]
   applyMove,
   hasAnyLegalMove,
@@ -18,6 +18,7 @@ import {
 import {
   GameState,
   PieceId,
+  PlacedPiece,
   PlayerColor,
   PlayerId,
   PlayerState,
@@ -73,15 +74,18 @@ function scoreForRemaining(remaining: PieceId[]) {
   return remaining.reduce((sum, id) => sum + PIECE_SIZES[id], 0);
 }
 
-function normalizeBoard(b: any): (PlayerId | null)[][] {
+function normalizeBoard(b: unknown): (PlayerId | null)[][] {
   const size = BOARD_SIZE;
   if (!Array.isArray(b) || b.length === 0) return makeEmptyBoard();
-  const h = b.length;
-  const w = Array.isArray(b[0]) ? b[0].length : 0;
+  const rows = b as unknown[];
+  const h = rows.length;
+  const w = Array.isArray(rows[0]) ? (rows[0] as unknown[]).length : 0;
   const out = Array.from({ length: size }, (_, y) =>
-    Array.from({ length: size }, (_, x) =>
-      y < h && x < w ? b[y][x] ?? null : null
-    )
+    Array.from({ length: size }, (_, x) => {
+      const row = Array.isArray(rows[y]) ? (rows[y] as unknown[]) : null;
+      const cell = row && row[x];
+      return typeof cell === "number" ? ((cell % 4) as PlayerId) : null;
+    })
   );
   return out;
 }
@@ -118,36 +122,70 @@ function boardFromHistory(
   return b;
 }
 
-function sanitizeSavedState(raw: any): GameState | null {
+function sanitizeSavedState(raw: unknown): GameState | null {
   try {
-    // Basic shape checks
-    if (!raw || !Array.isArray(raw.players) || raw.players.length !== 4)
-      return null;
+    if (!raw || typeof raw !== "object") return null;
+    const obj = raw as Record<string, unknown>;
+    if (!Array.isArray(obj.players) || obj.players.length !== 4) return null;
 
-    let board = normalizeBoard(raw.board);
-    const history = Array.isArray(raw.history) ? raw.history : [];
+    let board = normalizeBoard(obj.board);
+    const rawHistory = Array.isArray(obj.history)
+      ? (obj.history as unknown[])
+      : [];
+
+    const isPlacedPiece = (mv: unknown): mv is PlacedPiece =>
+      !!mv &&
+      typeof mv === "object" &&
+      typeof (mv as { player?: unknown }).player === "number" &&
+      typeof (mv as { at?: unknown }).at === "object" &&
+      typeof (mv as { at?: { x?: unknown } }).at?.x === "number" &&
+      typeof (mv as { at?: { y?: unknown } }).at?.y === "number" &&
+      Array.isArray((mv as { shape?: unknown }).shape);
+
+    const history: PlacedPiece[] = rawHistory.filter(
+      isPlacedPiece
+    ) as PlacedPiece[];
 
     // If the saved board is empty but we have history, rebuild it.
     if (!boardHasAnyTiles(board) && history.length) {
       board = boardFromHistory(history);
     }
 
+    // Helper to validate piece ids
+    const isPieceId = (pid: unknown): pid is PieceId =>
+      typeof pid === "string" &&
+      (ALL_PIECE_IDS as readonly string[]).includes(pid);
+
     // Coerce players array to ids [0..3] and clamp fields
-    const playersById = new Map<number, any>();
-    for (const p of raw.players) playersById.set(p.id, p);
+    const playersById = new Map<number, Record<string, unknown>>();
+    for (const p of obj.players as unknown[]) {
+      if (
+        p &&
+        typeof p === "object" &&
+        "id" in p &&
+        typeof (p as { id: unknown }).id === "number"
+      ) {
+        playersById.set((p as { id: number }).id, p as Record<string, unknown>);
+      }
+    }
     const players: PlayerState[] = [0, 1, 2, 3].map((id) => {
-      const p = playersById.get(id) || {};
-      const remaining = Array.isArray(p.remaining)
-        ? (p.remaining.filter((pid: any) =>
-            (ALL_PIECE_IDS as any).includes(pid)
-          ) as PieceId[])
+      const p = playersById.get(id);
+      const rawRemaining = p?.["remaining"];
+      const remaining = Array.isArray(rawRemaining)
+        ? (rawRemaining as unknown[]).filter(isPieceId)
         : [...ALL_PIECE_IDS];
+      const rawColor = p?.["color"];
+      const color =
+        typeof rawColor === "string" &&
+        (PLAYER_COLORS as readonly string[]).includes(rawColor)
+          ? (rawColor as PlayerColor)
+          : PLAYER_COLORS[id];
       return {
         id: id as PlayerId,
-        color: (p.color ?? PLAYER_COLORS[id]) as PlayerColor,
+        color,
         remaining,
-        hasPlayed: !!p.hasPlayed,
-        isBot: !!p.isBot,
+        hasPlayed: !!p?.["hasPlayed"],
+        isBot: !!p?.["isBot"],
         score: 0, // recompute below
         active: true, // recompute below
       };
@@ -156,7 +194,7 @@ function sanitizeSavedState(raw: any): GameState | null {
     // Recompute hasPlayed from history (more reliable than old saves)
     const played = new Set<number>();
     for (const m of history) {
-      if (m && typeof m.player === "number") played.add(m.player);
+      played.add(m.player);
     }
     for (const p of players) p.hasPlayed = p.hasPlayed || played.has(p.id);
 
@@ -164,21 +202,29 @@ function sanitizeSavedState(raw: any): GameState | null {
     for (const p of players) p.score = scoreForRemaining(p.remaining);
 
     // Current player clamp
-    let current: PlayerId = ((typeof raw.current === "number"
-      ? raw.current
+    let current: PlayerId = ((typeof obj.current === "number"
+      ? obj.current
       : 0) % 4) as PlayerId;
 
     // Winner ids normalization (ensure null or int[])
     let winnerIds: PlayerId[] | null = null;
-    if (Array.isArray(raw.winnerIds) && raw.winnerIds.length) {
-      winnerIds = raw.winnerIds.map((n: any) => (Number(n) % 4) as PlayerId);
+    if (Array.isArray(obj.winnerIds) && obj.winnerIds.length) {
+      winnerIds = obj.winnerIds.map((n) => (Number(n) % 4) as PlayerId);
     }
 
     // Meta defaults
+    const rawMeta = obj.meta;
+    const metaSource =
+      rawMeta && typeof rawMeta === "object"
+        ? (rawMeta as Record<string, unknown>)
+        : {};
     const meta = {
-      ...(raw.meta || {}),
-      matchId: raw.meta?.matchId || makeMatchId(),
-      rollPending: !!raw.meta?.rollPending && false, // never resume into roll UI
+      ...metaSource,
+      matchId:
+        typeof metaSource["matchId"] === "string"
+          ? (metaSource["matchId"] as string)
+          : makeMatchId(),
+      rollPending: !!metaSource["rollPending"] && false, // never resume into roll UI
       showedRollOnce: true, // suppress roll overlay after resume
       hydrated: true,
     };
@@ -221,6 +267,7 @@ function sanitizeSavedState(raw: any): GameState | null {
 type Action =
   | { type: "START"; humans: 1 | 4; seed?: string } // seed optional
   | { type: "HUMAN_ROLL" } // rolls for next human in queue
+  | { type: "BOT_ROLL"; pid: PlayerId }
   | {
       type: "PLACE";
       pid: PlayerId;
@@ -278,6 +325,7 @@ function reducer(state: GameState, action: Action): GameState {
           rolls: players.map((p) => ({ id: p.id, value: null })),
           lastRoll: undefined,
           showedRollOnce: false,
+          botQueue: [],
         },
       };
     }
@@ -320,15 +368,58 @@ function reducer(state: GameState, action: Action): GameState {
         };
       }
 
-      // 4) no humans left — auto-roll bots deterministically
-      const botFilled = rolls.map((r) => {
-        if (r.value != null) return r;
-        const dieBot = seededDie(`${rngSeed}-B-${r.id}`);
-        return { ...r, value: dieBot() };
-      }) as { id: PlayerId; value: number }[];
+      // 4) no humans left — enqueue bots (but don't roll them yet)
+      const botQueue: PlayerId[] = state.players
+        .filter((p) => p.isBot)
+        .map((p) => p.id);
 
-      // 5) tie-break deterministically using incrementing salts
-      let resolved = botFilled.slice();
+      return {
+        ...state,
+        meta: {
+          ...state.meta,
+          rolls,
+          rollQueue: [], // no more humans
+          rollPending: false,
+          botQueue, // HUD will now showcase bots in order
+          // lastRoll remains undefined until all bots have rolled
+        },
+      };
+    }
+
+    case "BOT_ROLL": {
+      const meta = state.meta || {};
+      const { rngSeed, botQueue = [], rolls: rawRolls = [] } = meta;
+
+      // If pid isn't in the queue (or there is no queue), ignore
+      if (!botQueue.includes(action.pid)) return state;
+
+      // 1) write bot value (seeded)
+      const dieBot = seededDie(`${rngSeed}-B-${action.pid}`);
+      const value = dieBot();
+      const rolls = rawRolls.map((r) =>
+        r.id === action.pid ? { ...r, value } : r
+      );
+
+      const remaining = botQueue.filter((id) => id !== action.pid);
+
+      // 2) if there are still bots left, just update queue & rolls
+      if (remaining.length > 0) {
+        return {
+          ...state,
+          meta: { ...meta, rolls, botQueue: remaining },
+        };
+      }
+
+      // 3) last bot done → resolve ties, compute final order, reorder seats
+      //    (Same logic you had in HUMAN_ROLL, but fed by the freshly-completed rolls)
+      const baseColors = PLAYER_COLORS as readonly [
+        PlayerColor,
+        PlayerColor,
+        PlayerColor,
+        PlayerColor
+      ];
+
+      let resolved = rolls as { id: PlayerId; value: number }[];
       const tieBreaks: Record<PlayerId, { from: number; to: number }> =
         {} as any;
       const nextValue = (id: PlayerId, iter: number) =>
@@ -340,15 +431,15 @@ function reducer(state: GameState, action: Action): GameState {
         return Object.values(map).some((ids) => ids.length > 1);
       };
 
+      // deterministic re-roll among tied groups until ties break (bounded)
       for (let iter = 1; iter <= 10 && hasTies(); iter++) {
-        const groups: Record<number, number[] /*indices*/> = {};
+        const groups: Record<number, number[]> = {};
         resolved.forEach((r, idx) => {
           (groups[r.value] ||= []).push(idx);
         });
         for (const k of Object.keys(groups)) {
           const g = groups[+k];
           if (g.length > 1) {
-            // re-roll tied seats only
             for (const idx of g) {
               const id = resolved[idx].id;
               const from = resolved[idx].value;
@@ -361,17 +452,12 @@ function reducer(state: GameState, action: Action): GameState {
         }
       }
 
-      resolved.sort((a, b) => b.value - a.value || a.id - b.id);
+      // final sort: higher die first; break persistent ties by lower seat id
+      resolved = resolved
+        .slice()
+        .sort((a, b) => b.value - a.value || a.id - b.id);
 
-      if (hasTies()) {
-        // final deterministic tie-break
-        resolved = resolved
-          .map((r) => ({ ...r, value: r.value })) // (no change)
-          .sort((a, b) => b.value - a.value || a.id - b.id);
-      }
-
-      // 6) sort & remap to Blue→Yellow→Red→Green order
-      resolved.sort((a, b) => b.value - a.value || a.id - b.id);
+      // map old seat ids -> new Blue..Green order
       const order = resolved.map((r) => r.id); // e.g. [2,0,3,1]
       const reordered = order.map((oldId, idx) => {
         const p = state.players[oldId];
@@ -390,16 +476,15 @@ function reducer(state: GameState, action: Action): GameState {
         history: [],
         winnerIds: null,
         meta: {
-          ...state.meta,
-          rollPending: false,
-          rollQueue: [],
-          rolls: resolved,
+          ...meta,
+          botQueue: [], // drained
+          rolls: resolved, // final seat-id + value pairs (old ids)
           lastRoll: resolved.map((r, i) => ({
             color: baseColors[i],
             value: r.value,
           })),
           tieBreaks,
-          showedRollOnce: false,
+          showedRollOnce: false, // HUD will show the results overlay once
         },
       };
     }

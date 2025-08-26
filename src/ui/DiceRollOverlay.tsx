@@ -1,58 +1,42 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Easing,
-  Platform,
-  Pressable,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
-import { shadow } from "../helpers/shadow";
+import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { usePalette } from "./theme";
 
+/** ---------- Types ---------- */
 type RollRow = { color: string; value: number };
 type Mode = "prompt" | "result";
 
+type PartialSeat = { seat: number; value: number | null };
+
 export const DiceRollOverlay: React.FC<{
   mode: Mode;
-  rollerLabel?: string; // prompt: label to show (e.g., "You" or "Player 2")
-  onRoll?: () => void; // prompt: dispatch HUMAN_ROLL (deterministic in reducer)
-  rolls?: RollRow[]; // result: final color-ordered rolls
-  onDone?: () => void; // result: dismiss
-  revealedValue?: number | null; // the actual roll value once reducer sets it
-  partial?: Array<{ seat: number; value: number | null }>;
-  tieBreaks?: Record<number, { from: number; to: number }>;
-  rollerKey?: number;
-  lockRollButton?: boolean;
-  // Auto-play (bots)
-  autoPlay?: boolean;
-  autoPlayValue?: number | null;
-  onAutoDone?: () => void;
-}> = ({
-  mode,
-  rollerLabel,
-  onRoll,
-  rolls,
-  onDone,
-  revealedValue,
-  partial = [],
-  tieBreaks = {},
-  rollerKey,
-  lockRollButton,
-  autoPlay = false,
-  autoPlayValue = null,
-  onAutoDone,
-}) => {
-  const pal = usePalette();
-  const { width: winW } = useWindowDimensions();
 
-  // entry spring
-  const scaleIn = useRef(new Animated.Value(0.9)).current;
+  /** PROMPT */
+  rollerLabel?: string; // e.g. "You", "Player 2", "Bot 3"
+  onRoll?: () => void; // human: dispatch HUMAN_ROLL
+  revealedValue?: number | null; // human: reducer-published final value
+  lockRollButton?: boolean; // freeze during 1.2s hold
+  partial?: PartialSeat[]; // progress chips P1..P4
+  rollerKey?: number | string; // reset per-seat
+
+  /** PROMPT - bots auto-play */
+  autoPlay?: boolean;
+  autoPlayValue?: number | null; // bot’s final value (from store)
+  onAutoDone?: () => void; // tell HUD to advance to next bot
+
+  /** RESULT */
+  rolls?: RollRow[];
+  onDone?: () => void;
+  tieBreaks?: Record<number, { from: number; to: number }>;
+}> = (props) => {
+  const pal = usePalette();
+
+  // Entry spring
+  const scaleIn = useRef(new Animated.Value(0.94)).current;
   useEffect(() => {
     Animated.spring(scaleIn, {
       toValue: 1,
-      useNativeDriver: Platform.OS !== "web",
+      useNativeDriver: true,
       friction: 7,
     }).start();
   }, []);
@@ -60,57 +44,49 @@ export const DiceRollOverlay: React.FC<{
   return (
     <View
       style={{
-        position: "absolute",
+        position: "absolute" as const,
         left: 0,
         right: 0,
         top: 0,
         bottom: 0,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,.5)",
-        zIndex: 5000,
-        elevation: 24,
+        backgroundColor: "rgba(0,0,0,.56)",
+        zIndex: 200,
       }}
+      pointerEvents="box-none"
     >
       <Animated.View
         style={{
           transform: [{ scale: scaleIn }],
           backgroundColor: pal.card,
-          borderRadius: 12,
+          borderRadius: 14,
           padding: 20,
-          width: Math.min(360, winW - 32),
-          ...shadow(10),
-          gap: 12,
+          minWidth: 360,
+          maxWidth: 560,
+          borderWidth: 1,
+          borderColor: pal.grid,
+          gap: 14,
         }}
       >
-        {mode === "prompt" ? (
-          <Prompt
-            rollerLabel={rollerLabel}
-            onRoll={onRoll}
-            revealedValue={revealedValue}
-            partial={partial}
-            rollerKey={rollerKey}
-            lockRollButton={lockRollButton}
-            autoPlay={autoPlay}
-            autoPlayValue={autoPlayValue}
-            onAutoDone={onAutoDone}
-          />
+        {props.mode === "prompt" ? (
+          <Prompt {...props} />
         ) : (
-          <Result rolls={rolls || []} onDone={onDone} tieBreaks={tieBreaks} />
+          <Result rolls={props.rolls || []} onDone={props.onDone} />
         )}
       </Animated.View>
     </View>
   );
 };
 
-/* ---------- Prompt: animated tumbling die + Roll button ---------- */
+/** ---------- Prompt (one overlay for human & bots) ---------- */
 const Prompt: React.FC<{
   rollerLabel?: string;
   onRoll?: () => void;
   revealedValue?: number | null;
-  partial: Array<{ seat: number; value: number | null }>;
-  rollerKey?: number;
   lockRollButton?: boolean;
+  partial?: PartialSeat[];
+  rollerKey?: number | string;
   autoPlay?: boolean;
   autoPlayValue?: number | null;
   onAutoDone?: () => void;
@@ -118,54 +94,58 @@ const Prompt: React.FC<{
   rollerLabel,
   onRoll,
   revealedValue,
-  partial,
-  rollerKey,
   lockRollButton,
+  partial = [],
+  rollerKey,
   autoPlay = false,
   autoPlayValue = null,
   onAutoDone,
 }) => {
   const pal = usePalette();
-  // 0 = blank face before each roll
+
+  // face: 0 = blank; 1..6 = pips
   const [face, setFace] = useState<number>(0);
   const [animating, setAnimating] = useState(false);
-  const spin = useRef(new Animated.Value(0)).current; // 0..1
-  const squash = useRef(new Animated.Value(0)).current; // 0..1
+  const spin = useRef(new Animated.Value(0)).current;
+  const squash = useRef(new Animated.Value(0)).current;
   const raf = useRef<number | null>(null);
+  const rollingRef = useRef(false); // <-- drives RAF; not subject to stale closures
   const HOLD_MS = 1200;
+  const MAX_SPIN_MS = 900;
 
-  // Reset the prompt when the seat changes
+  // Reset whenever the seat changes
   useEffect(() => {
     if (raf.current) cancelAnimationFrame(raf.current);
+    rollingRef.current = false;
     setAnimating(false);
     setFace(0);
     spin.setValue(0);
     squash.setValue(0);
+    return () => {
+      if (raf.current) cancelAnimationFrame(raf.current);
+    };
   }, [rollerKey]);
 
-  useEffect(
-    () => () => {
-      if (raf.current) cancelAnimationFrame(raf.current);
-    },
-    []
-  );
-
-  // When the store publishes the final seeded value, snap the face to it.
+  // When reducer publishes the true value (human), snap → hold
   useEffect(() => {
     if (revealedValue != null) {
       if (raf.current) cancelAnimationFrame(raf.current);
+      rollingRef.current = false;
       setFace(revealedValue);
       setAnimating(false);
     }
   }, [revealedValue]);
 
-  // Auto-play for bots: tumble -> reveal known value -> hold -> notify HUD
+  // Bot auto-play: tumble for ~450ms, then ask HUD to commit the value.
+  // The committed value will arrive via `revealedValue` and snap the face.
   useEffect(() => {
-    if (!autoPlay || autoPlayValue == null) return;
-    // kick the same animation as startRollAnim, but without calling onRoll
+    if (!autoPlay) return;
+
     setAnimating(true);
+    rollingRef.current = true;
     spin.setValue(0);
     squash.setValue(0);
+
     Animated.parallel([
       Animated.timing(spin, {
         toValue: 1,
@@ -189,102 +169,99 @@ const Prompt: React.FC<{
       ]),
     ]).start();
 
-    // quick shuffle while spinning; snap to final
     const t0 = Date.now();
     const tick = () => {
-      if (!animating) return;
+      if (!rollingRef.current) return;
       if (Date.now() - t0 > 450) {
-        setFace(autoPlayValue);
+        rollingRef.current = false;
         setAnimating(false);
-        setTimeout(() => onAutoDone?.(), HOLD_MS);
+        onAutoDone?.(); // <-- reducer writes the actual value
         return;
       }
       setFace(1 + Math.floor(Math.random() * 6));
       raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
-    // cleanup
+
     return () => {
+      rollingRef.current = false;
       if (raf.current) cancelAnimationFrame(raf.current);
     };
-  }, [autoPlay, autoPlayValue]);
+  }, [autoPlay, onAutoDone]);
 
-  const startRollAnim = () => {
-    if (animating) return;
+  const startRoll = () => {
+    if (animating || lockRollButton) return;
     setAnimating(true);
-
-    // spin & squash
+    rollingRef.current = true;
     spin.setValue(0);
     squash.setValue(0);
+
     Animated.parallel([
       Animated.timing(spin, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: Platform.OS !== "web",
+        useNativeDriver: true,
       }),
       Animated.sequence([
         Animated.timing(squash, {
           toValue: 1,
-          duration: 180,
+          duration: 200,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: Platform.OS !== "web",
+          useNativeDriver: true,
         }),
         Animated.timing(squash, {
           toValue: 0,
-          duration: 320,
+          duration: 400,
           easing: Easing.out(Easing.quad),
-          useNativeDriver: Platform.OS !== "web",
+          useNativeDriver: true,
         }),
       ]),
-    ]).start(); // keep 'animating' true until revealedValue arrives
+    ]).start();
 
-    // quick shuffle while spinning; snap to true value in the effect above
     const t0 = Date.now();
     const tick = () => {
-      // stop shuffling once true value is known or after ~450ms
-      if (revealedValue != null || Date.now() - t0 > 450 || !animating) return;
+      // shuffle until reducer publishes the value, or we hit a sane cap
+      if (!rollingRef.current) return;
+      if (revealedValue != null || Date.now() - t0 > MAX_SPIN_MS) {
+        rollingRef.current = false;
+        return;
+      }
       setFace(1 + Math.floor(Math.random() * 6));
       raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
 
-    // trigger deterministic roll in reducer (sets revealedValue)
     onRoll?.();
   };
 
   const rot = spin.interpolate({
     inputRange: [0, 1],
-    outputRange: ["0deg", "1900deg"], // tumble
+    outputRange: ["0deg", "1900deg"],
   });
   const sclX = squash.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 0.96],
+    outputRange: [1, 0.965],
   });
   const sclY = squash.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 1.04],
+    outputRange: [1, 1.035],
   });
 
   return (
     <>
       <Text
         style={{
-          fontWeight: "800",
-          fontSize: 18,
-          textAlign: "center",
           color: pal.text,
+          fontSize: 18,
+          fontWeight: "800",
+          textAlign: "center",
         }}
       >
-        {(rollerLabel ?? "Player").toUpperCase()} — roll the die
+        {rollerLabel ? `${rollerLabel} — roll the die` : "Roll the die"}
       </Text>
-      <View
-        style={{
-          alignItems: "center",
-          justifyContent: "center",
-          paddingVertical: 8,
-        }}
-      >
+
+      <View style={{ alignItems: "center", paddingVertical: 6 }}>
         <Animated.View
           style={{
             transform: [{ rotate: rot }, { scaleX: sclX }, { scaleY: sclY }],
@@ -293,187 +270,151 @@ const Prompt: React.FC<{
           <DiePips face={face} />
         </Animated.View>
       </View>
-      <Pressable
-        onPress={startRollAnim}
-        disabled={animating || !!lockRollButton}
-        style={{
-          alignSelf: "center",
-          paddingHorizontal: 16,
-          paddingVertical: 10,
-          borderRadius: 8,
-          backgroundColor: pal.accent,
-          opacity: animating || lockRollButton ? 0.7 : 1,
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "800" }}>
-          {animating ? "Rolling…" : "Roll"}
-        </Text>
-      </Pressable>
+
+      {/* Roll button (hidden during bot auto-play) */}
+      {!autoPlay && (
+        <Pressable
+          onPress={startRoll}
+          disabled={animating || !!lockRollButton}
+          style={{
+            alignSelf: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 10,
+            backgroundColor: pal.accent,
+            opacity: animating || lockRollButton ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800" }}>
+            {animating ? "Rolling…" : "Roll"}
+          </Text>
+        </Pressable>
+      )}
+
       <Text style={{ color: pal.text, opacity: 0.8, textAlign: "center" }}>
         Highest becomes <Text style={{ fontWeight: "800" }}>BLUE</Text>, then
         YELLOW, RED, GREEN.
       </Text>
-      {/* Partial results (live as humans roll) */}
-      {partial.length > 0 && (
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 8,
-            justifyContent: "center",
-            marginTop: 4,
-          }}
-        >
-          {partial.map((r, i) => (
-            <View
-              key={i}
-              style={{
-                minWidth: 54,
-                paddingHorizontal: 8,
-                paddingVertical: 6,
-                borderRadius: 8,
-                backgroundColor: "#ffffff0e",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: pal.text, opacity: 0.8, fontSize: 12 }}>
-                P{r.seat}
-              </Text>
-              <Text
-                style={{ color: pal.text, fontWeight: "800", fontSize: 16 }}
-              >
-                {r.value ?? "—"}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
+
+      {/* Progress chips */}
+      <Chips partial={partial} />
     </>
   );
 };
 
-/* ---------- Result: show four final dice with pips ---------- */
+/** ---------- Result ---------- */
 const Result: React.FC<{
   rolls: RollRow[];
   onDone?: () => void;
-  tieBreaks?: Record<number, { from: number; to: number }>;
-}> = ({ rolls, onDone, tieBreaks = {} }) => {
+}> = ({ rolls, onDone }) => {
   const pal = usePalette();
-  const [reveal, setReveal] = useState(0);
-  useEffect(() => {
-    setReveal(0);
-    // progressive reveal ~1s apart (bots appear paced)
-    const t1 = setTimeout(() => setReveal(1), 250);
-    const t2 = setTimeout(() => setReveal(2), 1250);
-    const t3 = setTimeout(() => setReveal(3), 2250);
-    const t4 = setTimeout(() => setReveal(4), 3250);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-    };
-  }, [rolls]);
+
   return (
     <>
       <Text
         style={{
           color: pal.text,
-          fontWeight: "800",
+          fontWeight: "900",
           fontSize: 18,
           textAlign: "center",
         }}
       >
         Dice roll — order set
       </Text>
-      <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
-        {rolls.map((r, i) => {
-          // Color order here is Blue (0), Yellow (1), Red (2), Green (3)
-          const baseHex = pal.player[i].fill;
-          const labelHex = r.color === "yellow" ? "#bfa500" : baseHex; // darker gold for contrast
 
-          return (
-            <View
-              key={i}
+      <View style={{ flexDirection: "row", gap: 14, justifyContent: "center" }}>
+        {rolls.map((r, i) => (
+          <View key={i} style={{ alignItems: "center", gap: 6 }}>
+            <DiePips face={r.value} />
+            <Text
               style={{
-                alignItems: "center",
-                gap: 6,
-                opacity: i < reveal ? 1 : 0.15,
+                fontWeight: "900",
+                color: r.color === "yellow" ? "#bfa500" : pal.player[i].fill,
               }}
             >
-              <DiePips face={i < reveal ? r.value : 0} />
-              <Text style={{ fontWeight: "900", color: labelHex }}>
-                {r.color.toUpperCase()}
-              </Text>
-              <Text style={{ color: pal.text }}>
-                rolled <Text style={{ fontWeight: "900" }}>{r.value}</Text>
-              </Text>
-            </View>
-          );
-        })}
+              {r.color.toUpperCase()}
+            </Text>
+            <Text style={{ color: pal.text }}>
+              rolled <Text style={{ fontWeight: "900" }}>{r.value}</Text>
+            </Text>
+          </View>
+        ))}
       </View>
-      {!!Object.keys(tieBreaks).length && (
-        <View style={{ marginTop: 6 }}>
-          <Text
-            style={{
-              color: pal.text,
-              opacity: 0.85,
-              textAlign: "center",
-              fontSize: 12,
-            }}
-          >
-            Tie-breaks applied for seats{" "}
-            {Object.keys(tieBreaks)
-              .map((k) => Number(k) + 1)
-              .sort((a, b) => a - b)
-              .join(", ")}
-          </Text>
-        </View>
-      )}
+
       <Pressable
         onPress={onDone}
-        accessibilityRole="button"
         style={{
           alignSelf: "center",
           paddingVertical: 8,
           paddingHorizontal: 12,
-          borderRadius: 6,
+          borderRadius: 8,
         }}
       >
-        <Text
-          style={{
-            color: pal.text,
-            opacity: 0.9,
-            textAlign: "center",
-            fontWeight: "700",
-          }}
-        >
-          Tap to start
-        </Text>
+        <Text style={{ color: pal.text, fontWeight: "700" }}>Tap to start</Text>
       </Pressable>
     </>
   );
 };
 
-/* ---------- Die with pips ---------- */
+/** ---------- Progress chips (P1..P4) ---------- */
+const Chips: React.FC<{ partial: PartialSeat[] }> = ({ partial }) => {
+  const pal = usePalette();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 8,
+        justifyContent: "center",
+        marginTop: 2,
+      }}
+    >
+      {(partial.length
+        ? partial
+        : [1, 2, 3, 4].map((n) => ({ seat: n, value: null }))
+      ).map((r, i) => (
+        <View
+          key={i}
+          style={{
+            width: 56,
+            borderRadius: 10,
+            backgroundColor: "#0b0b0f",
+            borderWidth: 1,
+            borderColor: pal.grid,
+            paddingVertical: 6,
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
+          <Text style={{ color: pal.text, opacity: 0.8, fontSize: 12 }}>
+            P{r.seat}
+          </Text>
+          <Text style={{ color: pal.text, fontWeight: "900" }}>
+            {r.value == null ? "—" : r.value}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
+/** ---------- Die ---------- */
 const DiePips: React.FC<{ face: number }> = ({ face }) => {
-  // 56x56 die with absolute pips
+  // 56x56 die; face=0 ⇒ blank
   const size = 56;
   const dot = 8;
   const off = 12;
   const center = size / 2 - dot / 2;
 
-  // pip positions
-  type Abs = { left?: number; right?: number; top?: number; bottom?: number };
-  const TL: Abs = { left: off, top: off };
-  const TR: Abs = { right: off, top: off };
-  const BL: Abs = { left: off, bottom: off };
-  const BR: Abs = { right: off, bottom: off };
-  const ML: Abs = { left: off, top: center };
-  const MR: Abs = { right: off, top: center };
-  const C: Abs = { left: center, top: center };
+  const TL = { left: off, top: off };
+  const TR = { right: off, top: off };
+  const BL = { left: off, bottom: off };
+  const BR = { right: off, bottom: off };
+  const ML = { left: off, top: center };
+  const MR = { right: off, top: center };
+  const C = { left: center, top: center };
 
-  const pipsByFace: Record<number, Abs[]> = {
-    0: [], // blank face until reveal
+  const pipsByFace: Record<number, Array<React.CSSProperties>> = {
+    0: [], // blank
     1: [C],
     2: [TL, BR],
     3: [TL, C, BR],
@@ -487,13 +428,16 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
       style={{
         width: size,
         height: size,
-        borderRadius: 12,
+        borderRadius: 14,
         backgroundColor: "#fff",
-        ...shadow(10),
         position: "relative",
+        shadowColor: "#000",
+        shadowOpacity: 0.18,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
       }}
     >
-      {(pipsByFace[face] || pipsByFace[1]).map((pos, i) => (
+      {(pipsByFace[face] || []).map((pos, i) => (
         <View
           key={i}
           style={

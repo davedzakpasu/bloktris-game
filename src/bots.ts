@@ -1,5 +1,6 @@
+import { BOARD_SIZE } from "./constants";
 import { PIECES } from "./pieces";
-import { BOARD_SIZE, isLegalMove, orientationsOf } from "./rules";
+import { isLegalMove, orientationsOf } from "./rules";
 import { Coord, GameState, PlayerId } from "./types";
 
 // Count potential future anchors (empty diagonals after placing)

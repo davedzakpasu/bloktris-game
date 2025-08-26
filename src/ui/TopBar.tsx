@@ -1,21 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { shadow } from "../helpers/shadow";
 import { MatchBadge } from "./MatchBadge";
 import { usePalette } from "./theme";
-
-// Optional shadow helper; if you don't have it, replace with your own shadow styles
-let shadow: (e?: number) => any = () => ({
-  ...(Platform.OS === "web"
-    ? { boxShadow: `0 4px 16px rgba(0,0,0,.18)` }
-    : {
-        shadowColor: "#000",
-        shadowOpacity: 0.18,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 6,
-      }),
-});
 
 // Inline help icon (uses your icon set if available; falls back to "?")
 type IconFC = React.FC<{ size?: number; color?: string }>;

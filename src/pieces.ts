@@ -52,7 +52,10 @@ export const PIECE_SIZES: Record<PieceId, number> = Object.fromEntries(
 // All 21 IDs in a fixed order
 export const ALL_PIECE_IDS: PieceId[] = Object.keys(PIECES) as PieceId[];
 
-export const ORIENTATIONS: Record<PieceId, Orientation[]> = {} as any;
+export const ORIENTATIONS: Record<PieceId, Orientation[]> = {} as Record<
+  PieceId,
+  Orientation[]
+>;
 for (const id of Object.keys(PIECES) as PieceId[]) {
   ORIENTATIONS[id] = orientationsOf(PIECES[id]);
 }

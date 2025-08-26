@@ -91,6 +91,7 @@ export interface MatchMeta {
   showedRollOnce?: boolean;
 
   hydrated?: boolean;
+  botQueue?: PlayerId[];
 }
 
 export interface GameState {

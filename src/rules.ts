@@ -69,12 +69,15 @@ export const PLAYER_CORNERS: Record<PlayerId, Coord> = {
   3: { x: 0, y: BOARD_SIZE - 1 },
 };
 
-export function isInsideBoard(shape: Shape, at: Coord): boolean {
+export function isInsideBoard(
+  shape: Shape,
+  at: Coord,
+  boardW = BOARD_SIZE,
+  boardH = BOARD_SIZE
+): boolean {
   const h = shape.length,
     w = shape[0].length;
-  return (
-    at.x >= 0 && at.y >= 0 && at.x + w <= BOARD_SIZE && at.y + h <= BOARD_SIZE
-  );
+  return at.x >= 0 && at.y >= 0 && at.x + w <= boardW && at.y + h <= boardH;
 }
 
 export function wouldOverlap(
@@ -83,8 +86,16 @@ export function wouldOverlap(
   at: Coord
 ): boolean {
   for (let y = 0; y < shape.length; y++) {
+    const gy = at.y + y;
+    const row = board[gy];
+    // Defensive: if the row doesn't exist, treat as overlap (invalid placement)
+    if (!row) return true;
+
     for (let x = 0; x < shape[0].length; x++) {
-      if (shape[y][x] && board[at.y + y][at.x + x] !== null) return true;
+      if (!shape[y][x]) continue;
+      const gx = at.x + x;
+      const cell = row[gx];
+      if (cell !== null && cell !== undefined) return true;
     }
   }
   return false;
@@ -202,7 +213,10 @@ export function isLegalMove(
   shape: Shape,
   at: Coord
 ): boolean {
-  if (!isInsideBoard(shape, at)) return false;
+  const boardH = state.board.length || BOARD_SIZE;
+  const boardW = state.board[0]?.length || BOARD_SIZE;
+
+  if (!isInsideBoard(shape, at, boardW, boardH)) return false;
   if (wouldOverlap(state.board, shape, at)) return false;
   if (touchSideSame(state.board, pid, shape, at)) return false;
 

@@ -11,10 +11,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { botMove } from "../bots";
+import { BOARD_SIZE } from "../constants";
 import { useGame } from "../GameProvider";
 import { shadow } from "../helpers/shadow";
 import { clearMatch, saveMatch } from "../persist";
-import { BOARD_SIZE, isLegalMove } from "../rules";
+import { isLegalMove } from "../rules";
 import type { GameState, PieceId, PlayerId } from "../types";
 import { AppLogo } from "./AppLogo";
 import { Board } from "./Board";
@@ -163,12 +164,20 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   const rollPending = !!state.meta?.rollPending;
   const rollQueue = state.meta?.rollQueue ?? [];
   const nextRollerId = rollQueue[0];
-
   const [botShowcaseSeat, setBotShowcaseSeat] = React.useState<PlayerId | null>(
     null
   );
+  // one-time guard so the showcase can't restart while results are open
+  const showcaseStartedRef = React.useRef(false);
 
-  // Which seat should the overlay show right now?
+  // convenience: are there any bots in this match?
+  const botsInMatch = React.useMemo(
+    () => state.players.some((p) => p.isBot),
+    [state.players]
+  );
+  const [showRollResults, setShowRollResults] = useState(false);
+
+  // Human roll “freeze” to avoid tap-spam and to keep the prompt up while value reveals
   const [rollFreezeSeat, setRollFreezeSeat] = React.useState<number | null>(
     null
   );
@@ -187,43 +196,97 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       ? state.meta?.rolls?.find((r) => r.id === overlaySeatId)?.value ?? null
       : null;
 
-  const partial = (state.meta?.rolls ?? [])
-    .sort((a, b) => a.id - b.id) // seats P1..P4
-    .map((r) => ({ seat: r.id + 1, value: r.value }));
+  const rolledMap = new Map(
+    (state.meta?.rolls ?? []).map((r) => [r.id, r.value])
+  );
+  const partial = state.players.map((_, id) => ({
+    seat: id + 1,
+    value: rolledMap.has(id as PlayerId)
+      ? rolledMap.get(id as PlayerId)!
+      : null, // null until that seat rolls
+  }));
 
-  const rollerKey = overlaySeatId ?? -1; // force prompt reset per-seat
+  const botQueue = state.meta?.botQueue ?? [];
 
-  // === NEW: bot showcase sequence after the last human has rolled ===
+  // 1) Sort rolls once
+  const rollsSorted = React.useMemo(
+    () => (state.meta?.rolls ?? []).slice().sort((a, b) => a.id - b.id),
+    [state.meta?.rolls]
+  );
 
+  // 2) Chips while HUMANS are rolling: hide bots after the last human has rolled
+  const partialHuman = React.useMemo(() => {
+    const anyBots = state.players.some((p) => p.isBot);
+    // once humans are done, reducer has all 4 values, but we mask bot values
+    const maskBotsNow = anyBots && !rollPending && !state.meta?.showedRollOnce;
+    return rollsSorted.map((r) => {
+      const isBot = state.players[r.id].isBot;
+      const value = maskBotsNow && isBot ? null : r.value;
+      return { seat: r.id + 1, value };
+    });
+  }, [rollsSorted, state.players, rollPending, state.meta?.showedRollOnce]);
+
+  // 3) Bot seats list (for progressive reveal during showcase)
   const botSeats = React.useMemo(
     () => state.players.filter((p) => p.isBot).map((p) => p.id),
     [state.players]
   );
 
-  // Start bot showcase once human rolls are done (rollPending just flipped false)
-  React.useEffect(() => {
-    const humans = state.players.filter((p) => !p.isBot).length;
-    if (!humans) return; // hot-seat 4 humans -> no bots to showcase
+  // 4) Chips during BOT SHOWCASE: reveal up to current showcased bot
+  const partialBot = React.useMemo(() => {
+    return rollsSorted.map((r) => {
+      const isBot = state.players[r.id].isBot;
+      if (!isBot) return { seat: r.id + 1, value: r.value };
+      // if the bot is still in the queue, keep it hidden
+      return {
+        seat: r.id + 1,
+        value: botQueue.includes(r.id) ? null : r.value,
+      };
+    });
+  }, [rollsSorted, state.players, botQueue]);
+
+  // Start bot showcase exactly once when the reducer publishes a botQueue
+  useEffect(() => {
     if (rollPending) return; // still rolling humans
-    if (!state.meta?.lastRoll) return; // safety
-    if (rollFreezeSeat != null) return; // wait until the hold ends
-    // If we haven't shown results yet and we aren’t already showcasing, start at first bot
-    if (
-      !state.meta?.showedRollOnce &&
-      botSeats.length > 0 &&
-      botShowcaseSeat === null
-    ) {
-      setBotShowcaseSeat(botSeats[0]);
+    if (!botsInMatch) return; // no bots → nothing to show
+    if (showRollResults) return; // don't restart while results are open
+    if (showcaseStartedRef.current) return;
+
+    if (botQueue.length > 0) {
+      showcaseStartedRef.current = true;
+      setBotShowcaseSeat(botQueue[0]);
     }
-  }, [
-    rollPending,
-    state.meta?.lastRoll,
-    state.meta?.showedRollOnce,
-    botSeats,
-    botShowcaseSeat,
-    state.players,
-    rollFreezeSeat,
-  ]);
+  }, [rollPending, botsInMatch, showRollResults, botQueue.length]);
+
+  useEffect(() => {
+    if (!showcaseStartedRef.current) return;
+    if (botQueue.length === 0) {
+      // all bots revealed → show final results
+      if (botShowcaseSeat !== null) setBotShowcaseSeat(null);
+      if (!showRollResults) setShowRollResults(true);
+    } else {
+      // keep HUD focused on the queue head
+      if (botShowcaseSeat !== botQueue[0]) setBotShowcaseSeat(botQueue[0]);
+    }
+  }, [botQueue, botShowcaseSeat, showRollResults]);
+
+  // Unfreeze when the head of the roll queue moves past the frozen seat
+  React.useEffect(() => {
+    if (rollFreezeSeat == null) return;
+    const head = state.meta?.rollQueue?.[0];
+    if (head !== rollFreezeSeat) {
+      setRollFreezeSeat(null);
+    }
+  }, [state.meta?.rollQueue, rollFreezeSeat]);
+
+  useEffect(() => {
+    if (state.meta?.rollPending) {
+      // new roll phase (or new match) begins
+      showcaseStartedRef.current = false;
+      setBotShowcaseSeat(null);
+      setShowRollResults(false);
+    }
+  }, [state.meta?.rollPending, state.meta?.matchId]);
 
   // Advance to the next bot after each auto animation says it's done
   const onBotAutoDone = React.useCallback(() => {
@@ -261,7 +324,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   };
 
   // After roll resolves, show results once
-  const [showRollResults, setShowRollResults] = useState(false);
+
   useEffect(() => {
     const anyBots = state.players.some((p) => p.isBot);
     if (!rollPending && state.meta?.lastRoll && !state.meta?.showedRollOnce) {
@@ -273,6 +336,14 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     state.meta?.showedRollOnce,
     state.players,
   ]);
+
+  // Phase-aware key so human→bot transitions always remount prompt
+  const phaseKey =
+    (rollPending && nextRollerLabel && "human") ||
+    (botShowcaseSeat !== null && "bot") ||
+    (showRollResults && state.meta?.lastRoll && "result") ||
+    "none";
+  const rollerKey = `${phaseKey}:${overlaySeatId ?? -1}`;
 
   const onDiceResultsDone = () => {
     setShowRollResults(false);
@@ -362,7 +433,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     });
 
   const placeAt = (x: number, y: number) => {
-    if (!pending) return;
+    if (!pending || preGameOverlayUp) return;
     if (!isLegalMove(state, state.current, pending.shape, { x, y })) {
       playInvalid();
       return;
@@ -384,7 +455,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     isLegalMove(state, state.current, pending.shape, ghostCell);
 
   const placeAtHover = () => {
-    if (!pending || !ghostCell) {
+    if (!pending || !ghostCell || preGameOverlayUp) {
       playInvalid();
       return;
     }
@@ -631,7 +702,10 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                     ? { shape: pending.shape, at: ghostCell }
                     : null
                 }
-                onGhostMove={(cell) => setGhostCell(cell)}
+                onGhostMove={(cell) => {
+                  if (preGameOverlayUp) return;
+                  setGhostCell(cell);
+                }}
               />
 
               {/* Controls under the board */}
@@ -770,7 +844,10 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                     ? { shape: pending.shape, at: ghostCell }
                     : null
                 }
-                onGhostMove={(cell) => setGhostCell(cell)}
+                onGhostMove={(cell) => {
+                  if (preGameOverlayUp) return;
+                  setGhostCell(cell);
+                }}
               />
             </Animated.View>
           </View>
@@ -975,54 +1052,94 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
         </Pressable>
       </View>
 
-      {/* Human rolling phase */}
-      {rollPending && nextRollerLabel && (
-        <DiceRollOverlay
-          mode="prompt"
-          rollerLabel={nextRollerLabel}
-          onRoll={() => {
-            // remember which seat just rolled; unfreeze after 1s
-            const justRolled = nextRollerId;
-            dispatch({ type: "HUMAN_ROLL" });
-            if (justRolled != null) {
-              setRollFreezeSeat(justRolled);
-              setTimeout(() => setRollFreezeSeat(null), 1200);
-            }
-          }}
-          revealedValue={currentRollValue}
-          partial={partial}
-          rollerKey={rollerKey}
-          lockRollButton={rollFreezeSeat != null}
-        />
-      )}
+      {/* ==== Single-overlay switch to prevent double-mounts ==== */}
+      {(() => {
+        const overlay = React.useMemo(() => {
+          type OverlayPhase =
+            | "humanPrompt"
+            | "botShowcase"
+            | "finalResults"
+            | null;
+          let phase: OverlayPhase = null;
+          if (rollPending && nextRollerLabel) phase = "humanPrompt";
+          else if (botShowcaseSeat !== null) phase = "botShowcase";
+          else if (showRollResults && state.meta?.lastRoll)
+            phase = "finalResults";
+          return { phase };
+        }, [
+          rollPending,
+          nextRollerLabel,
+          botShowcaseSeat,
+          showRollResults,
+          state.meta?.lastRoll,
+        ]);
 
-      {/* Bot showcase auto-play (after humans are done, before final results) */}
-      {botShowcaseSeat !== null && (
-        <DiceRollOverlay
-          mode="prompt"
-          rollerLabel={`Bot ${botShowcaseSeat + 1}`}
-          // no onRoll: runs automatically
-          autoPlay
-          autoPlayValue={
-            state.meta?.rolls?.find((r) => r.id === botShowcaseSeat)?.value ?? 1
+        switch (overlay.phase) {
+          case "humanPrompt": {
+            // LOCK the button if: still frozen OR the queue head hasn't advanced yet after clicking.
+            const lock =
+              rollFreezeSeat != null ||
+              (rollPending && nextRollerId === rollFreezeSeat) ||
+              nextRollerId == null;
+            return (
+              <DiceRollOverlay
+                key={`overlay-human-${overlaySeatId ?? -1}`}
+                mode="prompt"
+                rollerLabel={nextRollerLabel!}
+                onRoll={() => {
+                  const justRolled = nextRollerId;
+                  if (justRolled == null) return;
+                  setRollFreezeSeat(justRolled);
+                  dispatch({ type: "HUMAN_ROLL" });
+                }}
+                revealedValue={currentRollValue}
+                partial={partialHuman}
+                rollerKey={rollerKey}
+                lockRollButton={
+                  rollFreezeSeat != null ||
+                  (rollPending && nextRollerId === rollFreezeSeat) ||
+                  nextRollerId == null
+                }
+              />
+            );
           }
-          partial={(state.meta?.rolls ?? [])
-            .sort((a, b) => a.id - b.id)
-            .map((r) => ({ seat: r.id + 1, value: r.value }))}
-          rollerKey={rollerKey}
-          onAutoDone={onBotAutoDone}
-        />
-      )}
-
-      {/* One-time final results overlay after resolving order */}
-      {showRollResults && botShowcaseSeat === null && state.meta?.lastRoll && (
-        <DiceRollOverlay
-          mode="result"
-          rolls={state.meta.lastRoll}
-          tieBreaks={state.meta?.tieBreaks || {}}
-          onDone={dismissRollResults}
-        />
-      )}
+          case "botShowcase": {
+            const revealed =
+              state.meta?.rolls?.find((r) => r.id === botShowcaseSeat)?.value ??
+              null;
+            return (
+              <DiceRollOverlay
+                key={`overlay-bot-${botShowcaseSeat}`}
+                mode="prompt"
+                rollerLabel={`Bot ${botShowcaseSeat! + 1}`}
+                autoPlay
+                // don't pass autoPlayValue – the overlay will call onAutoDone, then we write the value
+                revealedValue={revealed}
+                partial={partialBot}
+                rollerKey={rollerKey}
+                onAutoDone={() => {
+                  // tell the reducer which bot just finished
+                  dispatch({ type: "BOT_ROLL", pid: botShowcaseSeat! });
+                  // no manual advance here – the botQueue effect will move to the next seat or finish
+                }}
+              />
+            );
+          }
+          case "finalResults": {
+            return (
+              <DiceRollOverlay
+                key="overlay-result"
+                mode="result"
+                rolls={state.meta!.lastRoll}
+                tieBreaks={state.meta?.tieBreaks || {}}
+                onDone={dismissRollResults}
+              />
+            );
+          }
+          default:
+            return null;
+        }
+      })()}
 
       {/* End-game overlay with confetti */}
       {state.winnerIds && (

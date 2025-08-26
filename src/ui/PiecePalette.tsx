@@ -5,6 +5,7 @@ import {
   Easing,
   Platform,
   Pressable,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -202,6 +203,15 @@ const PieceCardBase: React.FC<{
   const offsetX = Math.floor((cardSize - svgW) / 2);
   const offsetY = Math.floor((cardSize - svgH) / 2);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault?.();
+      onPress();
+    }
+  };
+  const webOnKeyDown: Record<string, unknown> =
+    Platform.OS === "web" ? { onKeyDown: handleKeyDown } : {};
+
   return (
     <Pressable
       onPress={onPress}
@@ -218,16 +228,7 @@ const PieceCardBase: React.FC<{
       {...(Platform.OS === "android"
         ? { android_ripple: { color: "#fff2", borderless: false } }
         : {})}
-      {...(Platform.OS === "web"
-        ? ({
-            onKeyDown: (e: any) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault?.();
-                onPress();
-              }
-            },
-          } as any)
-        : {})}
+      {...webOnKeyDown}
       style={{ width: cardSize, height: cardSize }}
     >
       <Animated.View
@@ -386,12 +387,10 @@ const AnimatedButton: React.FC<{
         }}
       >
         <Animated.View
-          style={{
-            position: "absolute",
-            inset: 0 as any,
-            backgroundColor: bgColor as any,
-            borderRadius: 6,
-          }}
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: bgColor as unknown as string, borderRadius: 6 },
+          ]}
         />
         {isActive ? iconActive : iconDefault}
         <Text

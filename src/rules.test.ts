@@ -1,4 +1,5 @@
-import { BOARD_SIZE, isLegalMove } from "./rules";
+import { BOARD_SIZE } from "./constants";
+import { isLegalMove } from "./rules";
 import { GameState, PlayerId, PlayerState, Shape } from "./types";
 
 describe("isLegalMove", () => {
