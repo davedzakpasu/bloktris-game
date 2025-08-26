@@ -1,5 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
+import {
+  CHIP_BG,
+  OVERLAY_BACKDROP,
+  PIP_COLOR,
+  PURE_BLACK,
+  PURE_WHITE,
+  YELLOW_TEXT,
+} from './colors';
 import { usePalette } from './theme';
 
 /** ---------- Types ---------- */
@@ -30,6 +46,29 @@ export const DiceRollOverlay: React.FC<{
   tieBreaks?: Record<number, { from: number; to: number }>;
 }> = (props) => {
   const pal = usePalette();
+  const styles = StyleSheet.create({
+    card: {
+      backgroundColor: pal.card,
+      borderColor: pal.grid,
+      borderRadius: 14,
+      borderWidth: 1,
+      gap: 14,
+      maxWidth: 560,
+      minWidth: 360,
+      padding: 20,
+    },
+    overlay: {
+      alignItems: 'center',
+      backgroundColor: OVERLAY_BACKDROP,
+      bottom: 0,
+      justifyContent: 'center',
+      left: 0,
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      zIndex: 200,
+    },
+  });
 
   // Entry spring
   const scaleIn = useRef(new Animated.Value(0.94)).current;
@@ -42,33 +81,8 @@ export const DiceRollOverlay: React.FC<{
   }, []);
 
   return (
-    <View
-      style={{
-        position: 'absolute' as const,
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,.56)',
-        zIndex: 200,
-      }}
-      pointerEvents="box-none"
-    >
-      <Animated.View
-        style={{
-          transform: [{ scale: scaleIn }],
-          backgroundColor: pal.card,
-          borderRadius: 14,
-          padding: 20,
-          minWidth: 360,
-          maxWidth: 560,
-          borderWidth: 1,
-          borderColor: pal.grid,
-          gap: 14,
-        }}
-      >
+    <View style={styles.overlay} pointerEvents="box-none">
+      <Animated.View style={[styles.card, { transform: [{ scale: scaleIn }] }]}>
         {props.mode === 'prompt' ? (
           <Prompt {...props} />
         ) : (
@@ -98,10 +112,29 @@ const Prompt: React.FC<{
   partial = [],
   rollerKey,
   autoPlay = false,
-  autoPlayValue = null,
   onAutoDone,
 }) => {
   const pal = usePalette();
+  const styles = StyleSheet.create({
+    dieWrapper: { alignItems: 'center', paddingVertical: 6 },
+    infoStrong: { fontWeight: '800' },
+    infoText: { color: pal.text, opacity: 0.8, textAlign: 'center' },
+    rollButton: {
+      alignSelf: 'center',
+      backgroundColor: pal.accent,
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    rollButtonDisabled: { opacity: 0.7 },
+    rollButtonText: { color: PURE_WHITE, fontWeight: '800' },
+    title: {
+      color: pal.text,
+      fontSize: 18,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+  });
 
   // face: 0 = blank; 1..6 = pips
   const [face, setFace] = useState<number>(0);
@@ -110,7 +143,6 @@ const Prompt: React.FC<{
   const squash = useRef(new Animated.Value(0)).current;
   const raf = useRef<number | null>(null);
   const rollingRef = useRef(false); // <-- drives RAF; not subject to stale closures
-  const HOLD_MS = 1200;
   const MAX_SPIN_MS = 900;
 
   // Reset whenever the seat changes
@@ -250,18 +282,11 @@ const Prompt: React.FC<{
 
   return (
     <>
-      <Text
-        style={{
-          color: pal.text,
-          fontSize: 18,
-          fontWeight: '800',
-          textAlign: 'center',
-        }}
-      >
+      <Text style={styles.title}>
         {rollerLabel ? `${rollerLabel} — roll the die` : 'Roll the die'}
       </Text>
 
-      <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+      <View style={styles.dieWrapper}>
         <Animated.View
           style={{
             transform: [{ rotate: rot }, { scaleX: sclX }, { scaleY: sclY }],
@@ -276,23 +301,19 @@ const Prompt: React.FC<{
         <Pressable
           onPress={startRoll}
           disabled={animating || !!lockRollButton}
-          style={{
-            alignSelf: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            borderRadius: 10,
-            backgroundColor: pal.accent,
-            opacity: animating || lockRollButton ? 0.7 : 1,
-          }}
+          style={[
+            styles.rollButton,
+            (animating || lockRollButton) && styles.rollButtonDisabled,
+          ]}
         >
-          <Text style={{ color: '#fff', fontWeight: '800' }}>
+          <Text style={styles.rollButtonText}>
             {animating ? 'Rolling…' : 'Roll'}
           </Text>
         </Pressable>
       )}
 
-      <Text style={{ color: pal.text, opacity: 0.8, textAlign: 'center' }}>
-        Highest becomes <Text style={{ fontWeight: '800' }}>BLUE</Text>, then
+      <Text style={styles.infoText}>
+        Highest becomes <Text style={styles.infoStrong}>BLUE</Text>, then
         YELLOW, RED, GREEN.
       </Text>
 
@@ -308,49 +329,55 @@ const Result: React.FC<{
   onDone?: () => void;
 }> = ({ rolls, onDone }) => {
   const pal = usePalette();
+  const styles = StyleSheet.create({
+    colorText: { fontWeight: '900' },
+    doneButton: {
+      alignSelf: 'center',
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    doneButtonText: { color: pal.text, fontWeight: '700' },
+    item: { alignItems: 'center', gap: 6 },
+    rollStrong: { fontWeight: '900' },
+    rollText: { color: pal.text },
+    row: { flexDirection: 'row', gap: 14, justifyContent: 'center' },
+    title: {
+      color: pal.text,
+      fontSize: 18,
+      fontWeight: '900',
+      textAlign: 'center',
+    },
+  });
 
   return (
     <>
-      <Text
-        style={{
-          color: pal.text,
-          fontWeight: '900',
-          fontSize: 18,
-          textAlign: 'center',
-        }}
-      >
-        Dice roll — order set
-      </Text>
+      <Text style={styles.title}>Dice roll — order set</Text>
 
-      <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
+      <View style={styles.row}>
         {rolls.map((r, i) => (
-          <View key={i} style={{ alignItems: 'center', gap: 6 }}>
+          <View key={i} style={styles.item}>
             <DiePips face={r.value} />
             <Text
-              style={{
-                fontWeight: '900',
-                color: r.color === 'yellow' ? '#bfa500' : pal.player[i].fill,
-              }}
+              style={[
+                styles.colorText,
+                {
+                  color:
+                    r.color === 'yellow' ? YELLOW_TEXT : pal.player[i].fill,
+                },
+              ]}
             >
               {r.color.toUpperCase()}
             </Text>
-            <Text style={{ color: pal.text }}>
-              rolled <Text style={{ fontWeight: '900' }}>{r.value}</Text>
+            <Text style={styles.rollText}>
+              rolled <Text style={styles.rollStrong}>{r.value}</Text>
             </Text>
           </View>
         ))}
       </View>
 
-      <Pressable
-        onPress={onDone}
-        style={{
-          alignSelf: 'center',
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          borderRadius: 8,
-        }}
-      >
-        <Text style={{ color: pal.text, fontWeight: '700' }}>Tap to start</Text>
+      <Pressable onPress={onDone} style={styles.doneButton}>
+        <Text style={styles.doneButtonText}>Tap to start</Text>
       </Pressable>
     </>
   );
@@ -359,36 +386,36 @@ const Result: React.FC<{
 /** ---------- Progress chips (P1..P4) ---------- */
 const Chips: React.FC<{ partial: PartialSeat[] }> = ({ partial }) => {
   const pal = usePalette();
+  const styles = StyleSheet.create({
+    chip: {
+      alignItems: 'center',
+      backgroundColor: CHIP_BG,
+      borderColor: pal.grid,
+      borderRadius: 10,
+      borderWidth: 1,
+      gap: 2,
+      paddingVertical: 6,
+      width: 56,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: 8,
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    seatText: { color: pal.text, fontSize: 12, opacity: 0.8 },
+    valueText: { color: pal.text, fontWeight: '900' },
+  });
+
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        gap: 8,
-        justifyContent: 'center',
-        marginTop: 2,
-      }}
-    >
+    <View style={styles.row}>
       {(partial.length
         ? partial
         : [1, 2, 3, 4].map((n) => ({ seat: n, value: null }))
       ).map((r, i) => (
-        <View
-          key={i}
-          style={{
-            width: 56,
-            borderRadius: 10,
-            backgroundColor: '#0b0b0f',
-            borderWidth: 1,
-            borderColor: pal.grid,
-            paddingVertical: 6,
-            alignItems: 'center',
-            gap: 2,
-          }}
-        >
-          <Text style={{ color: pal.text, opacity: 0.8, fontSize: 12 }}>
-            P{r.seat}
-          </Text>
-          <Text style={{ color: pal.text, fontWeight: '900' }}>
+        <View key={i} style={styles.chip}>
+          <Text style={styles.seatText}>P{r.seat}</Text>
+          <Text style={styles.valueText}>
             {r.value == null ? '—' : r.value}
           </Text>
         </View>
@@ -422,35 +449,31 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
     5: [TL, TR, C, BL, BR],
     6: [TL, TR, ML, MR, BL, BR],
   };
+  const styles = StyleSheet.create({
+    die: {
+      backgroundColor: PURE_WHITE,
+      borderRadius: 14,
+      height: size,
+      position: 'relative',
+      shadowColor: PURE_BLACK,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.18,
+      shadowRadius: 12,
+      width: size,
+    },
+    pip: {
+      backgroundColor: PIP_COLOR,
+      borderRadius: dot / 2,
+      height: dot,
+      position: 'absolute',
+      width: dot,
+    },
+  });
 
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 14,
-        backgroundColor: '#fff',
-        position: 'relative',
-        shadowColor: '#000',
-        shadowOpacity: 0.18,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-      }}
-    >
+    <View style={styles.die}>
       {(pipsByFace[face] || []).map((pos, i) => (
-        <View
-          key={i}
-          style={
-            {
-              position: 'absolute',
-              width: dot,
-              height: dot,
-              borderRadius: dot / 2,
-              backgroundColor: '#111',
-              ...pos,
-            } as any
-          }
-        />
+        <View key={i} style={[styles.pip, pos as ViewStyle]} />
       ))}
     </View>
   );
