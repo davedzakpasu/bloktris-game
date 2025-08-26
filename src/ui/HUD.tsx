@@ -320,6 +320,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
     setShowRollResults(false);
     dispatch({ type: 'MARK_ROLL_SHOWN' });
+    showcaseStartedRef.current = false;
   };
 
   // After roll resolves, show results once

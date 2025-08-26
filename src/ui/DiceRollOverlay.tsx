@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Pressable, Text, View } from "react-native";
-import { usePalette } from "./theme";
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { usePalette } from './theme';
 
 /** ---------- Types ---------- */
 type RollRow = { color: string; value: number };
-type Mode = "prompt" | "result";
+type Mode = 'prompt' | 'result';
 
 type PartialSeat = { seat: number; value: number | null };
 
@@ -44,14 +44,14 @@ export const DiceRollOverlay: React.FC<{
   return (
     <View
       style={{
-        position: "absolute" as const,
+        position: 'absolute' as const,
         left: 0,
         right: 0,
         top: 0,
         bottom: 0,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,.56)",
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,.56)',
         zIndex: 200,
       }}
       pointerEvents="box-none"
@@ -69,7 +69,7 @@ export const DiceRollOverlay: React.FC<{
           gap: 14,
         }}
       >
-        {props.mode === "prompt" ? (
+        {props.mode === 'prompt' ? (
           <Prompt {...props} />
         ) : (
           <Result rolls={props.rolls || []} onDone={props.onDone} />
@@ -136,7 +136,7 @@ const Prompt: React.FC<{
     }
   }, [revealedValue]);
 
-  // Bot auto-play: tumble for ~450ms, then ask HUD to commit the value.
+  // Bot auto-play: tumble for ~900ms, then ask HUD to commit the value.
   // The committed value will arrive via `revealedValue` and snap the face.
   useEffect(() => {
     if (!autoPlay) return;
@@ -149,20 +149,20 @@ const Prompt: React.FC<{
     Animated.parallel([
       Animated.timing(spin, {
         toValue: 1,
-        duration: 600,
+        duration: 900,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.sequence([
         Animated.timing(squash, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(squash, {
           toValue: 0,
-          duration: 400,
+          duration: 600,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
@@ -172,10 +172,10 @@ const Prompt: React.FC<{
     const t0 = Date.now();
     const tick = () => {
       if (!rollingRef.current) return;
-      if (Date.now() - t0 > 450) {
+      if (Date.now() - t0 > 900) {
         rollingRef.current = false;
         setAnimating(false);
-        onAutoDone?.(); // <-- reducer writes the actual value
+        setTimeout(() => onAutoDone?.(), 200); // allow animation to finish
         return;
       }
       setFace(1 + Math.floor(Math.random() * 6));
@@ -237,7 +237,7 @@ const Prompt: React.FC<{
 
   const rot = spin.interpolate({
     inputRange: [0, 1],
-    outputRange: ["0deg", "1900deg"],
+    outputRange: ['0deg', '1900deg'],
   });
   const sclX = squash.interpolate({
     inputRange: [0, 1],
@@ -254,14 +254,14 @@ const Prompt: React.FC<{
         style={{
           color: pal.text,
           fontSize: 18,
-          fontWeight: "800",
-          textAlign: "center",
+          fontWeight: '800',
+          textAlign: 'center',
         }}
       >
-        {rollerLabel ? `${rollerLabel} — roll the die` : "Roll the die"}
+        {rollerLabel ? `${rollerLabel} — roll the die` : 'Roll the die'}
       </Text>
 
-      <View style={{ alignItems: "center", paddingVertical: 6 }}>
+      <View style={{ alignItems: 'center', paddingVertical: 6 }}>
         <Animated.View
           style={{
             transform: [{ rotate: rot }, { scaleX: sclX }, { scaleY: sclY }],
@@ -277,7 +277,7 @@ const Prompt: React.FC<{
           onPress={startRoll}
           disabled={animating || !!lockRollButton}
           style={{
-            alignSelf: "center",
+            alignSelf: 'center',
             paddingHorizontal: 16,
             paddingVertical: 10,
             borderRadius: 10,
@@ -285,14 +285,14 @@ const Prompt: React.FC<{
             opacity: animating || lockRollButton ? 0.7 : 1,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "800" }}>
-            {animating ? "Rolling…" : "Roll"}
+          <Text style={{ color: '#fff', fontWeight: '800' }}>
+            {animating ? 'Rolling…' : 'Roll'}
           </Text>
         </Pressable>
       )}
 
-      <Text style={{ color: pal.text, opacity: 0.8, textAlign: "center" }}>
-        Highest becomes <Text style={{ fontWeight: "800" }}>BLUE</Text>, then
+      <Text style={{ color: pal.text, opacity: 0.8, textAlign: 'center' }}>
+        Highest becomes <Text style={{ fontWeight: '800' }}>BLUE</Text>, then
         YELLOW, RED, GREEN.
       </Text>
 
@@ -314,28 +314,28 @@ const Result: React.FC<{
       <Text
         style={{
           color: pal.text,
-          fontWeight: "900",
+          fontWeight: '900',
           fontSize: 18,
-          textAlign: "center",
+          textAlign: 'center',
         }}
       >
         Dice roll — order set
       </Text>
 
-      <View style={{ flexDirection: "row", gap: 14, justifyContent: "center" }}>
+      <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
         {rolls.map((r, i) => (
-          <View key={i} style={{ alignItems: "center", gap: 6 }}>
+          <View key={i} style={{ alignItems: 'center', gap: 6 }}>
             <DiePips face={r.value} />
             <Text
               style={{
-                fontWeight: "900",
-                color: r.color === "yellow" ? "#bfa500" : pal.player[i].fill,
+                fontWeight: '900',
+                color: r.color === 'yellow' ? '#bfa500' : pal.player[i].fill,
               }}
             >
               {r.color.toUpperCase()}
             </Text>
             <Text style={{ color: pal.text }}>
-              rolled <Text style={{ fontWeight: "900" }}>{r.value}</Text>
+              rolled <Text style={{ fontWeight: '900' }}>{r.value}</Text>
             </Text>
           </View>
         ))}
@@ -344,13 +344,13 @@ const Result: React.FC<{
       <Pressable
         onPress={onDone}
         style={{
-          alignSelf: "center",
+          alignSelf: 'center',
           paddingVertical: 8,
           paddingHorizontal: 12,
           borderRadius: 8,
         }}
       >
-        <Text style={{ color: pal.text, fontWeight: "700" }}>Tap to start</Text>
+        <Text style={{ color: pal.text, fontWeight: '700' }}>Tap to start</Text>
       </Pressable>
     </>
   );
@@ -362,9 +362,9 @@ const Chips: React.FC<{ partial: PartialSeat[] }> = ({ partial }) => {
   return (
     <View
       style={{
-        flexDirection: "row",
+        flexDirection: 'row',
         gap: 8,
-        justifyContent: "center",
+        justifyContent: 'center',
         marginTop: 2,
       }}
     >
@@ -377,19 +377,19 @@ const Chips: React.FC<{ partial: PartialSeat[] }> = ({ partial }) => {
           style={{
             width: 56,
             borderRadius: 10,
-            backgroundColor: "#0b0b0f",
+            backgroundColor: '#0b0b0f',
             borderWidth: 1,
             borderColor: pal.grid,
             paddingVertical: 6,
-            alignItems: "center",
+            alignItems: 'center',
             gap: 2,
           }}
         >
           <Text style={{ color: pal.text, opacity: 0.8, fontSize: 12 }}>
             P{r.seat}
           </Text>
-          <Text style={{ color: pal.text, fontWeight: "900" }}>
-            {r.value == null ? "—" : r.value}
+          <Text style={{ color: pal.text, fontWeight: '900' }}>
+            {r.value == null ? '—' : r.value}
           </Text>
         </View>
       ))}
@@ -429,9 +429,9 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
         width: size,
         height: size,
         borderRadius: 14,
-        backgroundColor: "#fff",
-        position: "relative",
-        shadowColor: "#000",
+        backgroundColor: '#fff',
+        position: 'relative',
+        shadowColor: '#000',
         shadowOpacity: 0.18,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 6 },
@@ -442,11 +442,11 @@ const DiePips: React.FC<{ face: number }> = ({ face }) => {
           key={i}
           style={
             {
-              position: "absolute",
+              position: 'absolute',
               width: dot,
               height: dot,
               borderRadius: dot / 2,
-              backgroundColor: "#111",
+              backgroundColor: '#111',
               ...pos,
             } as any
           }
