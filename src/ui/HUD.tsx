@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -637,37 +638,23 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   }, []);
 
   return (
-    <View
-      style={{
-        gap: 16,
-        alignItems: "stretch",
-        paddingTop: insets.top + TOPBAR_H + 8,
-      }}
-    >
+    <View style={[styles.container, { paddingTop: insets.top + TOPBAR_H + 8 }]}>
       <TopBar
         matchId={state.meta?.matchId}
         botThinking={botThinking}
         onHelpPress={showShortcutsNow}
         onHomePress={requestExit}
       />
-      <View style={{ alignItems: "center" }}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            // alignItems: "center",
-            width: "100%",
-            paddingHorizontal: 8,
-          }}
-        >
+      <View style={styles.center}>
+        <View style={styles.logoRow}>
           <AppLogo size={120} />
         </View>
         {preGameOverlayUp ? (
-          <Text style={{ color: pal.text, fontSize: 18, fontWeight: "700" }}>
+          <Text style={[styles.turnText, { color: pal.text }]}>
             Rolling for order…
           </Text>
         ) : (
-          <Text style={{ color: pal.text, fontSize: 18, fontWeight: "700" }}>
+          <Text style={[styles.turnText, { color: pal.text }]}>
             Turn:{" "}
             <Text style={{ color: curColorHex, fontWeight: "900" }}>
               {cur?.color.toUpperCase()}
@@ -679,16 +666,9 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
       {/* ====== Wide layout: Board (center) + Right palette rail (collapsible) ====== */}
       {isWide ? (
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "center",
-            gap: 16,
-            alignItems: "flex-start",
-          }}
-        >
+        <View style={styles.wideLayout}>
           {/* Left column: board + control row */}
-          <View style={{ alignItems: "center" }}>
+          <View style={styles.center}>
             <Animated.View
               style={{
                 transform: [{ scale: introScale }],
@@ -709,14 +689,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
               />
 
               {/* Controls under the board */}
-              <View style={{ alignItems: "center", marginTop: 12 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 12,
-                    justifyContent: "center",
-                  }}
-                >
+              <View style={[styles.center, { marginTop: 12 }]}>
+                <View style={styles.row}>
                   <ControlButton
                     label="Rotate"
                     onPress={rotate}
@@ -751,14 +725,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                     disabled={!canPlaceHere}
                   />
                 </View>
-                <Text
-                  style={{
-                    color: pal.text,
-                    opacity: 0.7,
-                    marginTop: 6,
-                    textAlign: "center",
-                  }}
-                >
+                <Text style={[styles.helperText, { color: pal.text }]}>
                   {pending
                     ? canPlaceHere
                       ? "Rotate/Flip then press Pick & Place (or click a legal cell)."
@@ -771,41 +738,31 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
           {/* Right column: collapsible palette rail (same visual height as board) */}
           <View
-            style={{
-              width: railOpen ? 380 : 48,
-              height: boardPx,
-              borderRadius: 12,
-              backgroundColor: pal.card,
-              borderWidth: 1,
-              borderColor: pal.grid,
-              overflow: "hidden",
-            }}
+            style={[
+              styles.rail,
+              {
+                width: railOpen ? 380 : 48,
+                height: boardPx,
+                backgroundColor: pal.card,
+                borderColor: pal.grid,
+              },
+            ]}
           >
             {/* Rail header (collapse) */}
-            <View
-              style={{
-                height: 44,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingHorizontal: 8,
-                borderBottomWidth: 1,
-                borderBottomColor: pal.grid,
-              }}
-            >
+            <View style={[styles.railHeader, { borderBottomColor: pal.grid }]}>
               <Text style={{ color: pal.text, fontWeight: "800" }}>
                 {railOpen ? "Palette" : ""}
               </Text>
               <Pressable
                 onPress={() => setRailOpen((v) => !v)}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 8,
-                  backgroundColor: pal.btnBg,
-                }}
+                style={[styles.railToggle, { backgroundColor: pal.btnBg }]}
               >
-                <Text style={{ color: pal.btnText, fontWeight: "900" }}>
+                <Text
+                  style={[
+                    styles.buttonText,
+                    { color: pal.btnText, fontWeight: "900" },
+                  ]}
+                >
                   {railOpen ? "»" : "«"}
                 </Text>
               </Pressable>
@@ -814,7 +771,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
             {/* Scrollable content */}
             {railOpen ? (
               <ScrollView
-                style={{ flex: 1 }}
+                style={styles.flex1}
                 contentContainerStyle={{ padding: 8, gap: 8 }}
               >
                 <PiecePalette
@@ -823,14 +780,14 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 />
               </ScrollView>
             ) : (
-              <View style={{ flex: 1 }} />
+              <View style={styles.flex1} />
             )}
           </View>
         </View>
       ) : (
         /* ====== Narrow layout: board top, controls, then palette below ====== */
         <>
-          <View style={{ alignItems: "center" }}>
+          <View style={styles.center}>
             <Animated.View
               style={{
                 transform: [{ scale: introScale }],
@@ -853,14 +810,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
           </View>
 
           {/* Controls under the board */}
-          <View style={{ alignItems: "center" }}>
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 12,
-                justifyContent: "center",
-              }}
-            >
+          <View style={styles.center}>
+            <View style={styles.row}>
               <ControlButton
                 label="Rotate"
                 onPress={rotate}
@@ -895,14 +846,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 disabled={!canPlaceHere}
               />
             </View>
-            <Text
-              style={{
-                color: pal.text,
-                opacity: 0.7,
-                marginTop: 6,
-                textAlign: "center",
-              }}
-            >
+            <Text style={[styles.helperText, { color: pal.text }]}>
               {pending
                 ? canPlaceHere
                   ? "Rotate/Flip then press Pick & Place (or tap a legal cell)."
@@ -938,83 +882,40 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
       {/* Confirm leave mid-game */}
       {confirmExitOpen && (
-        <View
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.55)",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-          }}
-        >
+        <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
           <View
-            style={{
-              width: 480,
-              maxWidth: "92%",
-              borderRadius: 12,
-              backgroundColor: pal.card,
-              padding: 20,
-              borderWidth: 1,
-              borderColor: pal.grid,
-            }}
+            style={[
+              styles.modal,
+              { backgroundColor: pal.card, borderColor: pal.grid },
+            ]}
           >
-            <Text
-              style={{
-                color: pal.text,
-                fontSize: 18,
-                fontWeight: "800",
-                textAlign: "center",
-                marginBottom: 8,
-              }}
-            >
+            <Text style={[styles.modalTitle, { color: pal.text }]}>
               Leave this game?
             </Text>
-            <Text
-              style={{
-                color: pal.text,
-                opacity: 0.85,
-                textAlign: "center",
-                marginBottom: 16,
-              }}
-            >
+            <Text style={[styles.modalText, { color: pal.text }]}>
               Your current match will be discarded.
             </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 12,
-                justifyContent: "center",
-              }}
-            >
+            <View style={styles.row}>
               <Pressable
                 onPress={cancelExit}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  backgroundColor: pal.btnBg,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: pal.grid,
-                }}
+                style={[
+                  styles.button,
+                  {
+                    backgroundColor: pal.btnBg,
+                    borderWidth: 1,
+                    borderColor: pal.grid,
+                  },
+                ]}
               >
-                <Text style={{ color: pal.btnText, fontWeight: "700" }}>
+                <Text style={[styles.buttonText, { color: pal.btnText }]}>
                   Stay
                 </Text>
               </Pressable>
               <Pressable
                 onPress={confirmExit}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  backgroundColor: pal.accent,
-                  borderRadius: 8,
-                }}
+                style={[styles.button, { backgroundColor: pal.accent }]}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>
+                <Text style={[styles.buttonText, { color: "#fff" }]}>
                   Leave game
                 </Text>
               </Pressable>
@@ -1037,16 +938,16 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       )}
 
       {/* Cancel / Skip row */}
-      <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
+      <View style={styles.row}>
         <Pressable
           onPress={() => setPending(null)}
-          style={{ padding: 10, backgroundColor: pal.btnBg, borderRadius: 6 }}
+          style={[styles.smallButton, { backgroundColor: pal.btnBg }]}
         >
           <Text style={{ color: pal.btnText }}>Cancel</Text>
         </Pressable>
         <Pressable
           onPress={() => dispatch({ type: "SKIP", pid: state.current })}
-          style={{ padding: 10, backgroundColor: pal.btnBg, borderRadius: 6 }}
+          style={[styles.smallButton, { backgroundColor: pal.btnBg }]}
         >
           <Text style={{ color: pal.btnText }}>Skip</Text>
         </Pressable>
@@ -1143,44 +1044,18 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
       {/* End-game overlay with confetti */}
       {state.winnerIds && (
-        <View
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,.55)",
-            padding: 24,
-          }}
-        >
+        <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,.55)" }]}>
           {confettiOn && <Confetti count={140} />}
           <View
-            style={{
-              width: 520,
-              maxWidth: "90%",
-              backgroundColor: pal.card,
-              borderRadius: 12,
-              padding: 24,
-              ...shadow(10),
-            }}
+            style={[
+              styles.endGameContainer,
+              { backgroundColor: pal.card, ...shadow(10) },
+            ]}
           >
-            <Text
-              style={{
-                color: pal.text,
-                fontSize: 22,
-                fontWeight: "800",
-                marginBottom: 8,
-                textAlign: "center",
-              }}
-            >
+            <Text style={[styles.endGameTitle, { color: pal.text }]}>
               Game Over 🎉
             </Text>
-            <Text
-              style={{ color: pal.text, marginBottom: 16, textAlign: "center" }}
-            >
+            <Text style={[styles.endGameText, { color: pal.text }]}>
               Winner{state.winnerIds.length > 1 ? "s" : ""}:{" "}
               <Text
                 style={{
@@ -1202,18 +1077,14 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 return (
                   <View
                     key={p.id}
-                    style={{
-                      paddingVertical: 6,
-                      paddingHorizontal: 10,
-                      borderRadius: 8,
-                      backgroundColor: bg,
-                      borderWidth: isWinner ? 1 : 0,
-                      borderColor: border,
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
+                    style={[
+                      styles.scoreRow,
+                      {
+                        backgroundColor: bg,
+                        borderWidth: isWinner ? 1 : 0,
+                        borderColor: border,
+                      },
+                    ]}
                   >
                     <Text style={{ color: colorHex, fontWeight: weight }}>
                       {p.color.toUpperCase()}
@@ -1231,23 +1102,12 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 );
               })}
             </View>
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 12,
-                justifyContent: "center",
-              }}
-            >
+            <View style={styles.row}>
               <Pressable
                 onPress={restart}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  backgroundColor: pal.accent,
-                  borderRadius: 8,
-                }}
+                style={[styles.button, { backgroundColor: pal.accent }]}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>
+                <Text style={[styles.buttonText, { color: "#fff" }]}>
                   Play again
                 </Text>
               </Pressable>
@@ -1259,16 +1119,16 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                     } catch {}
                     onExitHome();
                   }}
-                  style={{
-                    paddingVertical: 10,
-                    paddingHorizontal: 16,
-                    backgroundColor: pal.btnBg,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: pal.grid,
-                  }}
+                  style={[
+                    styles.button,
+                    {
+                      backgroundColor: pal.btnBg,
+                      borderWidth: 1,
+                      borderColor: pal.grid,
+                    },
+                  ]}
                 >
-                  <Text style={{ color: pal.btnText, fontWeight: "700" }}>
+                  <Text style={[styles.buttonText, { color: pal.btnText }]}>
                     Main menu
                   </Text>
                 </Pressable>
@@ -1280,6 +1140,128 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    gap: 16,
+    alignItems: "stretch",
+  },
+  center: {
+    alignItems: "center",
+  },
+  logoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 8,
+  },
+  turnText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  wideLayout: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 16,
+    alignItems: "flex-start",
+  },
+  row: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "center",
+  },
+  helperText: {
+    opacity: 0.7,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  rail: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  railHeader: {
+    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+  },
+  railToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  flex1: {
+    flex: 1,
+  },
+  smallButton: {
+    padding: 10,
+    borderRadius: 6,
+  },
+  overlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modal: {
+    width: 480,
+    maxWidth: "92%",
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalText: {
+    opacity: 0.85,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  button: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  buttonText: {
+    fontWeight: "700",
+  },
+  endGameContainer: {
+    width: 520,
+    maxWidth: "90%",
+    borderRadius: 12,
+    padding: 24,
+  },
+  endGameTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  endGameText: {
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  scoreRow: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+});
 
 /** Small reusable button with press feedback */
 const ControlButton: React.FC<{

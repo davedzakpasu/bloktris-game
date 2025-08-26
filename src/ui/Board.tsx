@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { Animated, GestureResponderEvent, Platform, View } from "react-native";
+import {
+  Animated,
+  GestureResponderEvent,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
 import Svg, { Defs, Line, Pattern, Rect } from "react-native-svg";
 import { BOARD_SIZE } from "../constants";
 import { useGame } from "../GameProvider";
@@ -27,15 +33,16 @@ const AnimatedCell: React.FC<{
   }, [keyStr]);
   return (
     <Animated.View
-      style={{
-        pointerEvents: "none",
-        position: "absolute",
-        left: x * cell,
-        top: y * cell,
-        width: cell,
-        height: cell,
-        transform: [{ scale: s }],
-      }}
+      style={[
+        styles.animatedCell,
+        {
+          left: x * cell,
+          top: y * cell,
+          width: cell,
+          height: cell,
+          transform: [{ scale: s }],
+        },
+      ]}
     >
       <Svg width={cell} height={cell}>
         <Rect
@@ -82,27 +89,23 @@ const CornerPulse: React.FC<{
 
   return (
     <Animated.View
-      style={{
-        pointerEvents: "none",
-        position: "absolute",
-        left: x * cell,
-        top: y * cell,
-        width: cell,
-        height: cell,
-        alignItems: "center",
-        justifyContent: "center",
-        transform: [{ scale }],
-        opacity,
-      }}
-    >
-      <View
-        style={{
+      style={[
+        styles.cornerPulse,
+        {
+          left: x * cell,
+          top: y * cell,
           width: cell,
           height: cell,
-          borderWidth: 2,
-          borderColor: color,
-          borderRadius: 4,
-        }}
+          transform: [{ scale }],
+          opacity,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.cornerInner,
+          { width: cell, height: cell, borderColor: color },
+        ]}
       />
     </Animated.View>
   );
@@ -182,13 +185,7 @@ export const Board: React.FC<{
   };
 
   return (
-    <View
-      style={{
-        alignItems: "center",
-        justifyContent: "center",
-        position: "relative",
-      }}
-    >
+    <View style={styles.container}>
       {/* 1) Base grid background + cell fills */}
       <Svg width={width} height={height}>
         <Rect x={0} y={0} width={width} height={height} fill={pal.boardBg} />
@@ -210,7 +207,7 @@ export const Board: React.FC<{
       <Svg
         width={width}
         height={height}
-        style={{ position: "absolute", left: 0, top: 0 }}
+        style={styles.overlay}
         // @ts-ignore
         shapeRendering="crispEdges"
       >
@@ -260,15 +257,14 @@ export const Board: React.FC<{
       {/* 5) Ghost preview (draggable, shake if illegal) — now ABOVE tiles */}
       {ghost && (
         <Animated.View
-          style={{
-            pointerEvents: "none",
-            position: "absolute",
-            left: ghost.at.x * CELL,
-            top: ghost.at.y * CELL,
-            transform: [{ translateX: ghostOk ? 0 : ghostShake }],
-            opacity: 0.92,
-            zIndex: 5,
-          }}
+          style={[
+            styles.ghost,
+            {
+              left: ghost.at.x * CELL,
+              top: ghost.at.y * CELL,
+              transform: [{ translateX: ghostOk ? 0 : ghostShake }],
+            },
+          ]}
         >
           <Svg
             width={ghost.shape[0].length * CELL}
@@ -336,15 +332,47 @@ export const Board: React.FC<{
         onResponderGrant={moveToEvent}
         onResponderMove={moveToEvent}
         onResponderRelease={moveToEvent}
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width,
-          height,
-          backgroundColor: "transparent",
-        }}
+        style={[styles.capture, { width, height }]}
       />
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  animatedCell: {
+    pointerEvents: "none",
+    position: "absolute",
+  },
+  cornerPulse: {
+    pointerEvents: "none",
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cornerInner: {
+    borderWidth: 2,
+    borderRadius: 4,
+  },
+  container: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  overlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
+  ghost: {
+    pointerEvents: "none",
+    position: "absolute",
+    opacity: 0.92,
+    zIndex: 5,
+  },
+  capture: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    backgroundColor: "transparent",
+  },
+});
