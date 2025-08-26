@@ -1,21 +1,22 @@
-import { BOARD_SIZE } from "./constants";
-import { ORIENTATIONS } from "./pieces";
+import { BOARD_SIZE } from './constants';
+import { ORIENTATIONS } from './pieces';
 import {
   Coord,
   GameState,
   Orientation,
   PieceDef,
+  PieceId,
   PlayerId,
   PlayerState,
   Shape,
-} from "./types";
+} from './types';
 
 // Build a matrix from coords, normalized to top-left at 0,0
 export function coordsToShape(cells: Coord[]): Shape {
   const maxX = Math.max(...cells.map((c) => c.x));
   const maxY = Math.max(...cells.map((c) => c.y));
   const m: Shape = Array.from({ length: maxY + 1 }, () =>
-    Array(maxX + 1).fill(0)
+    Array(maxX + 1).fill(0),
   );
   cells.forEach(({ x, y }) => (m[y][x] = 1));
   return m;
@@ -46,7 +47,7 @@ const normalize = (m: Shape): Shape => {
   return out.length ? out : [[0]];
 };
 
-const shapeKey = (m: Shape) => m.map((r) => r.join("")).join("/");
+const shapeKey = (m: Shape) => m.map((r) => r.join('')).join('/');
 
 export function orientationsOf(piece: PieceDef): Orientation[] {
   const base = coordsToShape(piece.cells);
@@ -61,7 +62,7 @@ export function orientationsOf(piece: PieceDef): Orientation[] {
   return [...set.values()];
 }
 
-export const PLAYER_COLORS = ["blue", "yellow", "red", "green"] as const;
+export const PLAYER_COLORS = ['blue', 'yellow', 'red', 'green'] as const;
 export const PLAYER_CORNERS: Record<PlayerId, Coord> = {
   0: { x: 0, y: 0 },
   1: { x: BOARD_SIZE - 1, y: 0 },
@@ -73,7 +74,7 @@ export function isInsideBoard(
   shape: Shape,
   at: Coord,
   boardW = BOARD_SIZE,
-  boardH = BOARD_SIZE
+  boardH = BOARD_SIZE,
 ): boolean {
   const h = shape.length,
     w = shape[0].length;
@@ -82,20 +83,29 @@ export function isInsideBoard(
 
 export function wouldOverlap(
   board: (PlayerId | null)[][],
-  shape: Shape,
-  at: Coord
+  pid: PlayerId,
+  shape: number[][],
+  at: { x: number; y: number },
 ): boolean {
-  for (let y = 0; y < shape.length; y++) {
-    const gy = at.y + y;
-    const row = board[gy];
-    // Defensive: if the row doesn't exist, treat as overlap (invalid placement)
-    if (!row) return true;
+  const H = BOARD_SIZE,
+    W = BOARD_SIZE;
+  const h = shape.length,
+    w = shape[0].length;
 
-    for (let x = 0; x < shape[0].length; x++) {
-      if (!shape[y][x]) continue;
-      const gx = at.x + x;
-      const cell = row[gx];
-      if (cell !== null && cell !== undefined) return true;
+  for (let sy = 0; sy < h; sy++) {
+    for (let sx = 0; sx < w; sx++) {
+      if (!shape[sy][sx]) continue;
+      const gx = at.x + sx,
+        gy = at.y + sy;
+
+      // out of bounds = overlap
+      if (gx < 0 || gy < 0 || gx >= W || gy >= H) return true;
+
+      // defensive row guard to avoid "reading '19' of undefined"
+      const row = board[gy];
+      if (!row) return true;
+
+      if (row[gx] !== null) return true;
     }
   }
   return false;
@@ -153,7 +163,7 @@ export function touchSideSame(
   board: (PlayerId | null)[][],
   pid: PlayerId,
   shape: Shape,
-  at: Coord
+  at: Coord,
 ): boolean {
   for (let y = 0; y < shape.length; y++) {
     for (let x = 0; x < shape[0].length; x++) {
@@ -175,7 +185,7 @@ export function touchCornerSame(
   board: (PlayerId | null)[][],
   pid: PlayerId,
   shape: Shape,
-  at: Coord
+  at: Coord,
 ): boolean {
   for (let y = 0; y < shape.length; y++) {
     for (let x = 0; x < shape[0].length; x++) {
@@ -196,7 +206,7 @@ export function touchCornerSame(
 export function firstMoveCoversCorner(
   shape: Shape,
   at: Coord,
-  corner: Coord
+  corner: Coord,
 ): boolean {
   for (let y = 0; y < shape.length; y++) {
     for (let x = 0; x < shape[0].length; x++) {
@@ -211,13 +221,13 @@ export function isLegalMove(
   state: GameState,
   pid: PlayerId,
   shape: Shape,
-  at: Coord
+  at: Coord,
 ): boolean {
   const boardH = state.board.length || BOARD_SIZE;
   const boardW = state.board[0]?.length || BOARD_SIZE;
 
   if (!isInsideBoard(shape, at, boardW, boardH)) return false;
-  if (wouldOverlap(state.board, shape, at)) return false;
+  if (wouldOverlap(state.board, pid, shape, at)) return false;
   if (touchSideSame(state.board, pid, shape, at)) return false;
 
   const player = state.players[pid];
@@ -233,7 +243,7 @@ export function applyMove(
   pid: PlayerId,
   pieceId: string,
   shape: Shape,
-  at: Coord
+  at: Coord,
 ): GameState {
   const board = state.board.map((row) => [...row]);
 
@@ -256,7 +266,7 @@ export function applyMove(
 
   const history = [
     ...state.history,
-    { pieceId: pieceId as any, player: pid, at, shape },
+    { pieceId: pieceId as PieceId, player: pid, at, shape },
   ];
   const next = nextPlayer(players, pid, board);
 
@@ -268,7 +278,7 @@ export function applyMove(
 function nextPlayer(
   players: PlayerState[],
   cur: PlayerId,
-  board: (PlayerId | null)[][]
+  board: (PlayerId | null)[][],
 ): PlayerId {
   for (let i = 1; i <= 4; i++) {
     const pid = ((cur + i) % 4) as PlayerId;
@@ -280,7 +290,7 @@ function nextPlayer(
 export function hasAnyLegalMove(
   players: PlayerState[],
   pid: PlayerId,
-  board: (PlayerId | null)[][]
+  board: (PlayerId | null)[][],
 ): boolean {
   const dummy: GameState = {
     board,
@@ -320,7 +330,7 @@ export function hasAnyLegalMove(
 
 export function isGameOver(
   players: PlayerState[],
-  board: (PlayerId | null)[][]
+  board: (PlayerId | null)[][],
 ): boolean {
   // Over if no active players can move
   const anyone = [0, 1, 2, 3].some((pid) => {

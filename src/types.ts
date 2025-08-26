@@ -92,6 +92,7 @@ export interface MatchMeta {
 
   hydrated?: boolean;
   botQueue?: PlayerId[];
+  order?: PlayerId[];
 }
 
 export interface GameState {

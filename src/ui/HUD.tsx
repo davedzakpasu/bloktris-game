@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 import {
   Animated,
   BackHandler,
@@ -9,41 +9,28 @@ import {
   Text,
   useWindowDimensions,
   View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { botMove } from "../bots";
-import { BOARD_SIZE } from "../constants";
-import { useGame } from "../GameProvider";
-import { shadow } from "../helpers/shadow";
-import { clearMatch, saveMatch } from "../persist";
-import { isLegalMove } from "../rules";
-import type { GameState, PieceId, PlayerId } from "../types";
-import { AppLogo } from "./AppLogo";
-import { Board } from "./Board";
-import { BottomSheet } from "./BottomSheet";
-import { PaletteFab } from "./buttons/PaletteFab";
-import { Confetti } from "./Confetti";
-import { DiceRollOverlay } from "./DiceRollOverlay";
-import { PlaceIcon, RotateIcon } from "./icons/icons";
-import { PlaceIconFilled, RotateIconFilled } from "./icons/iconsFilled";
-import { FlipIcon, FlipIconFilled } from "./icons/iconsFlip";
-import { PiecePalette } from "./PiecePalette";
-import { ShortcutTooltip } from "./ShortcutTooltip";
-import { usePalette } from "./theme";
-import { TopBar } from "./TopBar";
-
-let playStart = () => {};
-try {
-  // @ts-ignore
-  ({ playStart } = require("../sfx"));
-} catch {}
-
-let playPlace = () => {};
-let playInvalid = () => {};
-try {
-  // @ts-ignore
-  ({ playPlace, playInvalid } = require("../sfx"));
-} catch {}
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { botMove } from '../bots';
+import { BOARD_SIZE } from '../constants';
+import { useGame } from '../GameProvider';
+import { shadow } from '../helpers/shadow';
+import { clearMatch, saveMatch } from '../persist';
+import { isLegalMove } from '../rules';
+import type { GameState, PieceId, PlayerId } from '../types';
+import { AppLogo } from './AppLogo';
+import { Board } from './Board';
+import { BottomSheet } from './BottomSheet';
+import { PaletteFab } from './buttons/PaletteFab';
+import { Confetti } from './Confetti';
+import { DiceRollOverlay } from './DiceRollOverlay';
+import { PlaceIcon, RotateIcon } from './icons/icons';
+import { PlaceIconFilled, RotateIconFilled } from './icons/iconsFilled';
+import { FlipIcon, FlipIconFilled } from './icons/iconsFlip';
+import { PiecePalette } from './PiecePalette';
+import { ShortcutTooltip } from './ShortcutTooltip';
+import { usePalette } from './theme';
+import { TopBar } from './TopBar';
 
 type Shape = number[][];
 
@@ -53,6 +40,14 @@ const RAIL_W_OPEN = 380;
 const RAIL_W_CLOSED = 48;
 const H_GAP = 16; // gap between board and rail in wide layout
 const H_PAD = 24;
+
+const COLORS = {
+  white: '#fff',
+  overlayDim: 'rgba(0,0,0,0.55)',
+  disabled: '#9993',
+  winnerBg: '#ffffff10',
+  transparent: 'transparent',
+} as const;
 
 function centerCellFor(shape: Shape) {
   const h = shape.length;
@@ -79,7 +74,7 @@ function firstLegalNear(
   state: GameState,
   pid: PlayerId,
   shape: number[][],
-  seedCell: { x: number; y: number }
+  seedCell: { x: number; y: number },
 ) {
   const maxR = BOARD_SIZE; // small board; cheap spiral search
   for (let r = 0; r < maxR; r++) {
@@ -98,7 +93,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   const pal = usePalette();
   const { width: vw, height: vh } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const isWide = Platform.OS === "web" && vw >= 1024;
+  const isWide = Platform.OS === 'web' && vw >= 1024;
   // const TOPBAR_H = 48;
   const introA = React.useRef(new Animated.Value(0)).current;
   const [showShortcuts, setShowShortcuts] = useState(true);
@@ -106,12 +101,38 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     pieceId: PieceId;
     shape: Shape;
   } | null>(null);
-  const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(
-    null
-  );
   const [confettiOn, setConfettiOn] = useState(false);
   const [railOpen, setRailOpen] = useState(true); // ← collapsible rail
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // ---- optional SFX without require() ----
+  type SfxModule = {
+    playStart?: () => void;
+    playPlace?: () => void;
+    playInvalid?: () => void;
+  };
+  const sfxRef = React.useRef<SfxModule | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    // Optional dependency (web/CI may not have native sound)
+    import('../sfx')
+      .then((mod) => {
+        if (!mounted) return;
+        sfxRef.current = mod;
+      })
+      .catch((err) => {
+        // best-effort: sounds are optional
+        console.debug('[HUD] sfx module unavailable:', err);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const playStart = () => sfxRef.current?.playStart?.();
+  const playPlace = () => sfxRef.current?.playPlace?.();
+  const playInvalid = () => sfxRef.current?.playInvalid?.();
 
   // === Responsive board sizing (width AND height clamps) ===
   const railW = isWide ? (railOpen ? RAIL_W_OPEN : RAIL_W_CLOSED) : 0;
@@ -140,14 +161,14 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   // final cell size (clamped)
   const cell = Math.max(
     MIN_CELL,
-    Math.min(MAX_CELL, Math.min(cellFromWidth, cellFromHeight))
+    Math.min(MAX_CELL, Math.min(cellFromWidth, cellFromHeight)),
   );
 
   // pixel board size for matching the rail’s height
   const boardPx = cell * BOARD_SIZE;
 
   const [ghostCell, setGhostCell] = useState<{ x: number; y: number } | null>(
-    null
+    null,
   );
 
   const BOT_BASE_DELAY_MS = 850; // was 220
@@ -158,7 +179,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
   const cur = state.players[state.current];
   const isVsBots = state.players.some((p) => p.isBot);
-  const who = isVsBots ? (cur?.isBot ? "bot" : "you") : null;
+  const who = isVsBots ? (cur?.isBot ? 'bot' : 'you') : null;
   const curColorHex = cur ? pal.player[cur.id].fill : pal.text;
 
   // Show prompt if we need the human to roll
@@ -166,7 +187,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   const rollQueue = state.meta?.rollQueue ?? [];
   const nextRollerId = rollQueue[0];
   const [botShowcaseSeat, setBotShowcaseSeat] = React.useState<PlayerId | null>(
-    null
+    null,
   );
   // one-time guard so the showcase can't restart while results are open
   const showcaseStartedRef = React.useRef(false);
@@ -174,13 +195,13 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   // convenience: are there any bots in this match?
   const botsInMatch = React.useMemo(
     () => state.players.some((p) => p.isBot),
-    [state.players]
+    [state.players],
   );
   const [showRollResults, setShowRollResults] = useState(false);
 
   // Human roll “freeze” to avoid tap-spam and to keep the prompt up while value reveals
   const [rollFreezeSeat, setRollFreezeSeat] = React.useState<number | null>(
-    null
+    null,
   );
   const overlaySeatId = rollFreezeSeat ?? botShowcaseSeat ?? nextRollerId;
   const nextRollerLabel =
@@ -188,63 +209,53 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       ? (() => {
           const humans = state.players.filter((p) => !p.isBot).length;
           if (botShowcaseSeat !== null) return `Bot ${overlaySeatId + 1}`;
-          return humans === 1 ? "You" : `Player ${overlaySeatId + 1}`;
+          return humans === 1 ? 'You' : `Player ${overlaySeatId + 1}`;
         })()
       : undefined;
 
   const currentRollValue =
     overlaySeatId != null
-      ? state.meta?.rolls?.find((r) => r.id === overlaySeatId)?.value ?? null
+      ? (state.meta?.rolls?.find((r) => r.id === overlaySeatId)?.value ?? null)
       : null;
-
-  const rolledMap = new Map(
-    (state.meta?.rolls ?? []).map((r) => [r.id, r.value])
-  );
-  const partial = state.players.map((_, id) => ({
-    seat: id + 1,
-    value: rolledMap.has(id as PlayerId)
-      ? rolledMap.get(id as PlayerId)!
-      : null, // null until that seat rolls
-  }));
 
   const botQueue = state.meta?.botQueue ?? [];
 
   // 1) Sort rolls once
   const rollsSorted = React.useMemo(
     () => (state.meta?.rolls ?? []).slice().sort((a, b) => a.id - b.id),
-    [state.meta?.rolls]
+    [state.meta?.rolls],
   );
 
   // 2) Chips while HUMANS are rolling: hide bots after the last human has rolled
   const partialHuman = React.useMemo(() => {
     const anyBots = state.players.some((p) => p.isBot);
-    // once humans are done, reducer has all 4 values, but we mask bot values
     const maskBotsNow = anyBots && !rollPending && !state.meta?.showedRollOnce;
-    return rollsSorted.map((r) => {
-      const isBot = state.players[r.id].isBot;
-      const value = maskBotsNow && isBot ? null : r.value;
-      return { seat: r.id + 1, value };
-    });
-  }, [rollsSorted, state.players, rollPending, state.meta?.showedRollOnce]);
-
-  // 3) Bot seats list (for progressive reveal during showcase)
-  const botSeats = React.useMemo(
-    () => state.players.filter((p) => p.isBot).map((p) => p.id),
-    [state.players]
-  );
+    return (state.meta?.rolls ?? [])
+      .slice()
+      .sort((a, b) => a.id - b.id)
+      .map((r) => ({
+        seat: r.id + 1,
+        value: maskBotsNow && state.players[r.id].isBot ? null : r.value,
+      }));
+  }, [
+    state.players,
+    state.meta?.rolls,
+    rollPending,
+    state.meta?.showedRollOnce,
+  ]);
 
   // 4) Chips during BOT SHOWCASE: reveal up to current showcased bot
-  const partialBot = React.useMemo(() => {
-    return rollsSorted.map((r) => {
-      const isBot = state.players[r.id].isBot;
-      if (!isBot) return { seat: r.id + 1, value: r.value };
-      // if the bot is still in the queue, keep it hidden
-      return {
-        seat: r.id + 1,
-        value: botQueue.includes(r.id) ? null : r.value,
-      };
-    });
-  }, [rollsSorted, state.players, botQueue]);
+  const partialBot = React.useMemo(
+    () =>
+      rollsSorted.map((r) => {
+        const isBot = state.players[r.id].isBot;
+        return {
+          seat: r.id + 1,
+          value: isBot && botQueue.includes(r.id) ? null : r.value,
+        };
+      }),
+    [rollsSorted, state.players, botQueue],
+  );
 
   // Start bot showcase exactly once when the reducer publishes a botQueue
   useEffect(() => {
@@ -253,7 +264,12 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     if (showRollResults) return; // don't restart while results are open
     if (showcaseStartedRef.current) return;
 
-    if (botQueue.length > 0) {
+    if (
+      !rollPending &&
+      botsInMatch &&
+      botQueue.length > 0 &&
+      !showcaseStartedRef.current
+    ) {
       showcaseStartedRef.current = true;
       setBotShowcaseSeat(botQueue[0]);
     }
@@ -262,14 +278,10 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
   useEffect(() => {
     if (!showcaseStartedRef.current) return;
     if (botQueue.length === 0) {
-      // all bots revealed → show final results
-      if (botShowcaseSeat !== null) setBotShowcaseSeat(null);
-      if (!showRollResults) setShowRollResults(true);
-    } else {
-      // keep HUD focused on the queue head
-      if (botShowcaseSeat !== botQueue[0]) setBotShowcaseSeat(botQueue[0]);
-    }
-  }, [botQueue, botShowcaseSeat, showRollResults]);
+      setBotShowcaseSeat(null);
+      setShowRollResults(true);
+    } else if (botShowcaseSeat !== botQueue[0]) setBotShowcaseSeat(botQueue[0]);
+  }, [botQueue, botShowcaseSeat]);
 
   // Unfreeze when the head of the roll queue moves past the frozen seat
   React.useEffect(() => {
@@ -289,20 +301,6 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     }
   }, [state.meta?.rollPending, state.meta?.matchId]);
 
-  // Advance to the next bot after each auto animation says it's done
-  const onBotAutoDone = React.useCallback(() => {
-    if (botShowcaseSeat == null) return;
-    const idx = botSeats.indexOf(botShowcaseSeat);
-    const next = botSeats[idx + 1] ?? null;
-    if (next == null) {
-      // finish: hand off to final results overlay
-      setBotShowcaseSeat(null);
-      setShowRollResults(true);
-    } else {
-      setBotShowcaseSeat(next);
-    }
-  }, [botSeats, botShowcaseSeat]);
-
   // Any pre-game overlay active? (rolling to determine seats or showing results once)
   const preGameOverlayUp =
     !!state.meta?.rollPending ||
@@ -317,15 +315,14 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     Animated.timing(introA, {
       toValue: 1,
       duration: 420,
-      useNativeDriver: Platform.OS !== "web",
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
 
     setShowRollResults(false);
-    dispatch({ type: "MARK_ROLL_SHOWN" });
+    dispatch({ type: 'MARK_ROLL_SHOWN' });
   };
 
   // After roll resolves, show results once
-
   useEffect(() => {
     const anyBots = state.players.some((p) => p.isBot);
     if (!rollPending && state.meta?.lastRoll && !state.meta?.showedRollOnce) {
@@ -340,16 +337,11 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
   // Phase-aware key so human→bot transitions always remount prompt
   const phaseKey =
-    (rollPending && nextRollerLabel && "human") ||
-    (botShowcaseSeat !== null && "bot") ||
-    (showRollResults && state.meta?.lastRoll && "result") ||
-    "none";
+    (rollPending && nextRollerLabel && 'human') ||
+    (botShowcaseSeat !== null && 'bot') ||
+    (showRollResults && state.meta?.lastRoll && 'result') ||
+    'none';
   const rollerKey = `${phaseKey}:${overlaySeatId ?? -1}`;
-
-  const onDiceResultsDone = () => {
-    setShowRollResults(false);
-    dispatch({ type: "MARK_ROLL_SHOWN" });
-  };
 
   // Auto-play bots when it's their turn
   const botThinkingRef = React.useRef(false);
@@ -373,10 +365,10 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     const t = setTimeout(() => {
       const best = botMove(state, cur);
       if (!best) {
-        dispatch({ type: "SKIP", pid: cur });
+        dispatch({ type: 'SKIP', pid: cur });
       } else {
         dispatch({
-          type: "PLACE",
+          type: 'PLACE',
           pid: cur,
           pieceId: best.pieceId,
           shape: best.shape,
@@ -440,7 +432,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       return;
     }
     dispatch({
-      type: "PLACE",
+      type: 'PLACE',
       pid: state.current,
       pieceId: pending.pieceId,
       shape: pending.shape,
@@ -476,9 +468,11 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
     // Clear the finished match before starting a new one
     try {
       await clearMatch();
-    } catch {}
+    } catch (e) {
+      console.debug('[HUD] clearMatch failed:', e);
+    }
     const humans = state.players.filter((p) => !p.isBot).length as 1 | 4;
-    dispatch({ type: "START", humans });
+    dispatch({ type: 'START', humans });
     setPending(null);
     setConfettiOn(false);
   };
@@ -511,12 +505,12 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
           saveMatch(state);
           onExitHomeRef.current();
         } catch (e) {
-          console.error("onExitHome threw:", e);
+          console.error('onExitHome threw:', e);
         }
       } else {
         // helpful during dev if the prop wasn't passed
         console.warn(
-          "[HUD] onExitHome is undefined. Did you pass <HUD onExitHome={...} /> from your App/Home navigator?"
+          '[HUD] onExitHome is undefined. Did you pass <HUD onExitHome={...} /> from your App/Home navigator?',
         );
       }
     });
@@ -526,8 +520,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
   // Android hardware back → confirm
   useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (isMidGame && !confirmExitOpen) {
         setConfirmExitOpen(true);
         return true; // prevent default
@@ -539,20 +533,20 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
   // Web: warn on refresh/close if mid-game
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (Platform.OS !== 'web') return;
     const handler = (e: BeforeUnloadEvent) => {
       if (isMidGame) {
         e.preventDefault();
-        e.returnValue = "";
+        e.returnValue = '';
       }
     };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
   }, [isMidGame]);
 
   // Shortcuts (web)
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (Platform.OS !== 'web') return;
     const onKey = (e: KeyboardEvent) => {
       // Don’t allow shortcuts while roll overlay is up
       if (preGameOverlayUp) return;
@@ -560,60 +554,56 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       const editing =
-        tag === "input" ||
-        tag === "textarea" ||
+        tag === 'input' ||
+        tag === 'textarea' ||
         (t?.isContentEditable ?? false);
       if (editing) return;
 
-      if (e.key === "r" || e.key === "R") {
+      if (e.key === 'r' || e.key === 'R') {
         if (pending) {
           e.preventDefault();
           rotate();
         }
-      } else if (e.key === "f" || e.key === "F") {
+      } else if (e.key === 'f' || e.key === 'F') {
         if (pending) {
           e.preventDefault();
           flip();
         }
-      } else if (e.key === "Enter" || e.key === " ") {
+      } else if (e.key === 'Enter' || e.key === ' ') {
         if (pending && ghostCell) {
           e.preventDefault();
           placeAtHover();
         }
-      } else if (e.key === "Escape") {
+      } else if (e.key === 'Escape') {
         if (pending) {
           e.preventDefault();
           setPending(null);
         }
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [pending, hoverCell, preGameOverlayUp]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pending, preGameOverlayUp]);
 
   // Tooltip persistence
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (Platform.OS !== 'web') return;
     try {
-      const v = window.localStorage.getItem("bloktris.shortcuts.hidden");
-      if (v === "1") setShowShortcuts(false);
-    } catch {}
+      const v = window.localStorage.getItem('bloktris.shortcuts.hidden');
+      if (v === '1') setShowShortcuts(false);
+    } catch (e) {
+      console.debug('[HUD] localStorage.getItem failed:', e);
+    }
   }, []);
-
-  const dismissShortcuts = () => {
-    setShowShortcuts(false);
-    if (Platform.OS === "web")
-      try {
-        window.localStorage.setItem("bloktris.shortcuts.hidden", "1");
-      } catch {}
-  };
 
   const showShortcutsNow = () => {
     setShowShortcuts(true);
-    if (Platform.OS === "web")
+    if (Platform.OS === 'web')
       try {
-        window.localStorage.removeItem("bloktris.shortcuts.hidden");
-      } catch {}
+        window.localStorage.setItem('bloktris.shortcuts.hidden', '1');
+      } catch (e) {
+        console.debug('[HUD] localStorage.setItem failed:', e);
+      }
   };
 
   const introScale = introA.interpolate({
@@ -632,7 +622,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       Animated.timing(introA, {
         toValue: 1,
         duration: 420,
-        useNativeDriver: Platform.OS !== "web",
+        useNativeDriver: Platform.OS !== 'web',
       }).start();
     }
   }, []);
@@ -655,8 +645,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
           </Text>
         ) : (
           <Text style={[styles.turnText, { color: pal.text }]}>
-            Turn:{" "}
-            <Text style={{ color: curColorHex, fontWeight: "900" }}>
+            Turn:{' '}
+            <Text style={[{ color: curColorHex }, styles.bold9]}>
               {cur?.color.toUpperCase()}
             </Text>
             {who && <> [{who}]</>}
@@ -689,7 +679,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
               />
 
               {/* Controls under the board */}
-              <View style={[styles.center, { marginTop: 12 }]}>
+              <View style={[styles.center, styles.mt12]}>
                 <View style={styles.row}>
                   <ControlButton
                     label="Rotate"
@@ -728,9 +718,9 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 <Text style={[styles.helperText, { color: pal.text }]}>
                   {pending
                     ? canPlaceHere
-                      ? "Rotate/Flip then press Pick & Place (or click a legal cell)."
-                      : "Rotate/Flip and hover a legal cell to enable Pick & Place."
-                    : "Pick a piece from the palette to begin."}
+                      ? 'Rotate/Flip then press Pick & Place (or click a legal cell).'
+                      : 'Rotate/Flip and hover a legal cell to enable Pick & Place.'
+                    : 'Pick a piece from the palette to begin.'}
                 </Text>
               </View>
             </Animated.View>
@@ -740,8 +730,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
           <View
             style={[
               styles.rail,
+              railOpen ? styles.railOpen : styles.railClosed,
               {
-                width: railOpen ? 380 : 48,
                 height: boardPx,
                 backgroundColor: pal.card,
                 borderColor: pal.grid,
@@ -750,8 +740,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
           >
             {/* Rail header (collapse) */}
             <View style={[styles.railHeader, { borderBottomColor: pal.grid }]}>
-              <Text style={{ color: pal.text, fontWeight: "800" }}>
-                {railOpen ? "Palette" : ""}
+              <Text style={[{ color: pal.text }, styles.bold8]}>
+                {railOpen ? 'Palette' : ''}
               </Text>
               <Pressable
                 onPress={() => setRailOpen((v) => !v)}
@@ -760,10 +750,11 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 <Text
                   style={[
                     styles.buttonText,
-                    { color: pal.btnText, fontWeight: "900" },
+                    { color: pal.btnText },
+                    styles.bold9,
                   ]}
                 >
-                  {railOpen ? "»" : "«"}
+                  {railOpen ? '»' : '«'}
                 </Text>
               </Pressable>
             </View>
@@ -772,7 +763,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
             {railOpen ? (
               <ScrollView
                 style={styles.flex1}
-                contentContainerStyle={{ padding: 8, gap: 8 }}
+                contentContainerStyle={styles.scrollContent}
               >
                 <PiecePalette
                   onChoose={handleChoose}
@@ -849,9 +840,9 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
             <Text style={[styles.helperText, { color: pal.text }]}>
               {pending
                 ? canPlaceHere
-                  ? "Rotate/Flip then press Pick & Place (or tap a legal cell)."
-                  : "Rotate/Flip and hover a legal cell to enable Pick & Place."
-                : "Pick a piece from the palette to begin."}
+                  ? 'Rotate/Flip then press Pick & Place (or tap a legal cell).'
+                  : 'Rotate/Flip and hover a legal cell to enable Pick & Place.'
+                : 'Pick a piece from the palette to begin.'}
             </Text>
           </View>
 
@@ -865,8 +856,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
             title="Palette"
           >
             <ScrollView
-              style={{ maxHeight: "100%" }}
-              contentContainerStyle={{ paddingBottom: 8 }}
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetScrollContent}
             >
               <PiecePalette
                 onChoose={(id, shape) => {
@@ -882,7 +873,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
       {/* Confirm leave mid-game */}
       {confirmExitOpen && (
-        <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
+        <View style={[styles.overlay, styles.overlayDim]}>
           <View
             style={[
               styles.modal,
@@ -900,11 +891,8 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 onPress={cancelExit}
                 style={[
                   styles.button,
-                  {
-                    backgroundColor: pal.btnBg,
-                    borderWidth: 1,
-                    borderColor: pal.grid,
-                  },
+                  styles.outlinedButton,
+                  { backgroundColor: pal.btnBg, borderColor: pal.grid },
                 ]}
               >
                 <Text style={[styles.buttonText, { color: pal.btnText }]}>
@@ -915,7 +903,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 onPress={confirmExit}
                 style={[styles.button, { backgroundColor: pal.accent }]}
               >
-                <Text style={[styles.buttonText, { color: "#fff" }]}>
+                <Text style={[styles.buttonText, styles.whiteText]}>
                   Leave game
                 </Text>
               </Pressable>
@@ -928,10 +916,12 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
         <ShortcutTooltip
           onDismiss={() => {
             setShowShortcuts(false);
-            if (Platform.OS === "web")
+            if (Platform.OS === 'web')
               try {
-                window.localStorage.setItem("bloktris.shortcuts.hidden", "1");
-              } catch {}
+                window.localStorage.setItem('bloktris.shortcuts.hidden', '1');
+              } catch (e) {
+                console.debug('[HUD] localStorage.setItem failed:', e);
+              }
           }}
           canPlace={canPlaceHere}
         />
@@ -946,7 +936,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
           <Text style={{ color: pal.btnText }}>Cancel</Text>
         </Pressable>
         <Pressable
-          onPress={() => dispatch({ type: "SKIP", pid: state.current })}
+          onPress={() => dispatch({ type: 'SKIP', pid: state.current })}
           style={[styles.smallButton, { backgroundColor: pal.btnBg }]}
         >
           <Text style={{ color: pal.btnText }}>Skip</Text>
@@ -957,15 +947,15 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
       {(() => {
         const overlay = React.useMemo(() => {
           type OverlayPhase =
-            | "humanPrompt"
-            | "botShowcase"
-            | "finalResults"
+            | 'humanPrompt'
+            | 'botShowcase'
+            | 'finalResults'
             | null;
           let phase: OverlayPhase = null;
-          if (rollPending && nextRollerLabel) phase = "humanPrompt";
-          else if (botShowcaseSeat !== null) phase = "botShowcase";
+          if (rollPending && nextRollerLabel) phase = 'humanPrompt';
+          else if (botShowcaseSeat !== null) phase = 'botShowcase';
           else if (showRollResults && state.meta?.lastRoll)
-            phase = "finalResults";
+            phase = 'finalResults';
           return { phase };
         }, [
           rollPending,
@@ -976,7 +966,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
         ]);
 
         switch (overlay.phase) {
-          case "humanPrompt": {
+          case 'humanPrompt': {
             // LOCK the button if: still frozen OR the queue head hasn't advanced yet after clicking.
             const lock =
               rollFreezeSeat != null ||
@@ -991,42 +981,34 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                   const justRolled = nextRollerId;
                   if (justRolled == null) return;
                   setRollFreezeSeat(justRolled);
-                  dispatch({ type: "HUMAN_ROLL" });
+                  dispatch({ type: 'HUMAN_ROLL' });
                 }}
                 revealedValue={currentRollValue}
                 partial={partialHuman}
                 rollerKey={rollerKey}
-                lockRollButton={
-                  rollFreezeSeat != null ||
-                  (rollPending && nextRollerId === rollFreezeSeat) ||
-                  nextRollerId == null
-                }
+                lockRollButton={lock}
               />
             );
           }
-          case "botShowcase": {
+          case 'botShowcase': {
             const revealed =
               state.meta?.rolls?.find((r) => r.id === botShowcaseSeat)?.value ??
               null;
             return (
               <DiceRollOverlay
-                key={`overlay-bot-${botShowcaseSeat}`}
                 mode="prompt"
                 rollerLabel={`Bot ${botShowcaseSeat! + 1}`}
                 autoPlay
-                // don't pass autoPlayValue – the overlay will call onAutoDone, then we write the value
                 revealedValue={revealed}
                 partial={partialBot}
                 rollerKey={rollerKey}
-                onAutoDone={() => {
-                  // tell the reducer which bot just finished
-                  dispatch({ type: "BOT_ROLL", pid: botShowcaseSeat! });
-                  // no manual advance here – the botQueue effect will move to the next seat or finish
-                }}
+                onAutoDone={() =>
+                  dispatch({ type: 'BOT_ROLL', pid: botShowcaseSeat! })
+                }
               />
             );
           }
-          case "finalResults": {
+          case 'finalResults': {
             return (
               <DiceRollOverlay
                 key="overlay-result"
@@ -1044,7 +1026,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 
       {/* End-game overlay with confetti */}
       {state.winnerIds && (
-        <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,.55)" }]}>
+        <View style={[styles.overlay, styles.overlayDim]}>
           {confettiOn && <Confetti count={140} />}
           <View
             style={[
@@ -1056,45 +1038,49 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
               Game Over 🎉
             </Text>
             <Text style={[styles.endGameText, { color: pal.text }]}>
-              Winner{state.winnerIds.length > 1 ? "s" : ""}:{" "}
+              Winner{state.winnerIds.length > 1 ? 's' : ''}:{' '}
               <Text
-                style={{
-                  color: pal.player[state.winnerIds![0]].fill,
-                  fontWeight: "900",
-                }}
+                style={[
+                  { color: pal.player[state.winnerIds![0]].fill },
+                  styles.bold9,
+                ]}
               >
                 {state.players[state.winnerIds![0]].color.toUpperCase()}
               </Text>
             </Text>
-            <View style={{ gap: 6, marginBottom: 16 }}>
+            <View style={styles.winnersList}>
               {state.players.map((p) => {
                 const isWinner = state.winnerIds?.includes(p.id);
                 const colorHex = pal.player[p.id].fill;
-                const bg = isWinner ? "#ffffff10" : "transparent";
-                const border = isWinner ? pal.accent : "transparent";
-                const weight = isWinner ? ("800" as const) : ("600" as const);
+                const weight = isWinner ? ('800' as const) : ('600' as const);
+                const scoreRowDyn = React.useMemo(
+                  () => ({
+                    backgroundColor: isWinner
+                      ? COLORS.winnerBg
+                      : COLORS.transparent,
+                    borderColor: isWinner ? pal.accent : COLORS.transparent,
+                  }),
+                  [isWinner, pal.accent],
+                );
 
                 return (
                   <View
                     key={p.id}
                     style={[
                       styles.scoreRow,
-                      {
-                        backgroundColor: bg,
-                        borderWidth: isWinner ? 1 : 0,
-                        borderColor: border,
-                      },
+                      isWinner && styles.scoreRowWinner,
+                      scoreRowDyn,
                     ]}
                   >
                     <Text style={{ color: colorHex, fontWeight: weight }}>
                       {p.color.toUpperCase()}
                     </Text>
                     <Text
-                      style={{
-                        color: pal.text,
-                        opacity: 0.9,
-                        fontWeight: weight,
-                      }}
+                      style={[
+                        { color: pal.text },
+                        styles.op90,
+                        isWinner ? styles.bold8 : styles.w600,
+                      ]}
                     >
                       score: {p.score}
                     </Text>
@@ -1107,7 +1093,7 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                 onPress={restart}
                 style={[styles.button, { backgroundColor: pal.accent }]}
               >
-                <Text style={[styles.buttonText, { color: "#fff" }]}>
+                <Text style={[styles.buttonText, styles.whiteText]}>
                   Play again
                 </Text>
               </Pressable>
@@ -1116,16 +1102,15 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
                   onPress={async () => {
                     try {
                       await clearMatch();
-                    } catch {}
+                    } catch (e) {
+                      console.debug('[HUD] clearMatch failed:', e);
+                    }
                     onExitHome();
                   }}
                   style={[
                     styles.button,
-                    {
-                      backgroundColor: pal.btnBg,
-                      borderWidth: 1,
-                      borderColor: pal.grid,
-                    },
+                    styles.outlinedButton,
+                    { backgroundColor: pal.btnBg, borderColor: pal.grid },
                   ]}
                 >
                   <Text style={[styles.buttonText, { color: pal.btnText }]}>
@@ -1142,125 +1127,151 @@ export const HUD: React.FC<{ onExitHome?: () => void }> = ({ onExitHome }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    gap: 16,
-    alignItems: "stretch",
+  bold7: { fontWeight: '700' },
+  bold8: { fontWeight: '800' },
+  bold9: { fontWeight: '900' },
+  button: {
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  buttonText: {
+    fontWeight: '700',
   },
   center: {
-    alignItems: "center",
+    alignItems: 'center',
   },
-  logoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    paddingHorizontal: 8,
-  },
-  turnText: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  wideLayout: {
-    flexDirection: "row",
-    justifyContent: "center",
+  container: {
+    alignItems: 'stretch',
     gap: 16,
-    alignItems: "flex-start",
   },
-  row: {
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "center",
-  },
-  helperText: {
-    opacity: 0.7,
-    marginTop: 6,
-    textAlign: "center",
-  },
-  rail: {
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  railHeader: {
-    height: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-  },
-  railToggle: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  // ControlButton base styles
+  ctrlButtonBase: {
+    alignItems: 'center',
     borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  ctrlDisabled: { opacity: 0.6 },
+  endGameContainer: {
+    borderRadius: 12,
+    maxWidth: '90%',
+    padding: 24,
+    width: 520,
+  },
+  endGameText: {
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  endGameTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   flex1: {
     flex: 1,
   },
-  smallButton: {
-    padding: 10,
-    borderRadius: 6,
+  helperText: {
+    marginTop: 6,
+    opacity: 0.7,
+    textAlign: 'center',
   },
-  overlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
+  logoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    width: '100%',
   },
   modal: {
-    width: 480,
-    maxWidth: "92%",
     borderRadius: 12,
-    padding: 20,
     borderWidth: 1,
+    maxWidth: '92%',
+    padding: 20,
+    width: 480,
+  },
+  modalText: {
+    marginBottom: 16,
+    opacity: 0.85,
+    textAlign: 'center',
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "800",
-    textAlign: "center",
+    fontWeight: '800',
     marginBottom: 8,
+    textAlign: 'center',
   },
-  modalText: {
-    opacity: 0.85,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  button: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  buttonText: {
-    fontWeight: "700",
-  },
-  endGameContainer: {
-    width: 520,
-    maxWidth: "90%",
-    borderRadius: 12,
+  mt12: { marginTop: 12 },
+  op90: { opacity: 0.9 },
+  outlinedButton: { borderWidth: 1 },
+  overlay: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
     padding: 24,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
-  endGameTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 8,
-    textAlign: "center",
+  overlayDim: { backgroundColor: COLORS.overlayDim },
+  rail: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  endGameText: {
-    marginBottom: 16,
-    textAlign: "center",
+  railClosed: { width: 48 },
+  railHeader: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    height: 44,
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  railOpen: { width: 380 },
+  railToggle: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
   },
   scoreRow: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    alignItems: 'center',
     borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
     gap: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
+  scoreRowWinner: { borderWidth: 1 },
+  scrollContent: { gap: 8, padding: 8 },
+  sheetScroll: { maxHeight: '100%' },
+  sheetScrollContent: { paddingBottom: 8 },
+  smallButton: {
+    borderRadius: 6,
+    padding: 10,
+  },
+  turnText: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  w600: { fontWeight: '600' },
+  whiteText: { color: COLORS.white },
+  wideLayout: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'center',
+  },
+  winnersList: { gap: 6, marginBottom: 16 },
 });
 
 /** Small reusable button with press feedback */
@@ -1286,36 +1297,36 @@ const ControlButton: React.FC<{
   disabled,
 }) => {
   const [pressed, setPressed] = useState(false);
+
+  const containerStyle = React.useMemo(
+    () => [
+      styles.ctrlButtonBase,
+      disabled && styles.ctrlDisabled,
+      {
+        backgroundColor: disabled ? COLORS.disabled : pressed ? activeBg : bg,
+      },
+    ],
+    [disabled, pressed, activeBg, bg],
+  );
+
+  const labelStyle = React.useMemo(
+    () => [styles.bold7, { color: pressed ? textColorActive : textColor }],
+    [pressed, textColor, textColorActive],
+  );
+
+  const iconColor = pressed ? textColorActive : textColor;
+  const IconCmp = pressed ? IconActive : Icon;
+
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      style={{
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 8,
-        backgroundColor: disabled ? "#9993" : pressed ? activeBg : bg,
-        flexDirection: "row",
-        gap: 8,
-        alignItems: "center",
-        opacity: disabled ? 0.6 : 1,
-      }}
+      style={containerStyle}
     >
-      {pressed ? (
-        <IconActive size={18} color={textColorActive} />
-      ) : (
-        <Icon size={18} color={textColor} />
-      )}
-      <Text
-        style={{
-          color: pressed ? textColorActive : textColor,
-          fontWeight: "700",
-        }}
-      >
-        {label}
-      </Text>
+      <IconCmp size={18} color={iconColor} />
+      <Text style={labelStyle}>{label}</Text>
     </Pressable>
   );
 };

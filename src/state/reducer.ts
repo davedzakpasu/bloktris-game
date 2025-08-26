@@ -1,11 +1,11 @@
-import { BOARD_SIZE } from "../constants";
-import { ALL_PIECE_IDS } from "../pieces";
+import { BOARD_SIZE } from '../constants';
+import { ALL_PIECE_IDS } from '../pieces';
 import {
   PLAYER_COLORS,
   applyMove,
   hasAnyLegalMove,
   isGameOver,
-} from "../rules";
+} from '../rules';
 import {
   GameState,
   PieceId,
@@ -13,8 +13,8 @@ import {
   PlayerColor,
   PlayerId,
   PlayerState,
-} from "../types";
-import { buildPlayers, makeEmptyBoard, scoreForRemaining } from "./helpers";
+} from '../types';
+import { buildPlayers, makeEmptyBoard, scoreForRemaining } from './helpers';
 
 /** ---------- Seeded RNG utilities ---------- */
 function mulberry32(seed: number) {
@@ -39,7 +39,7 @@ function seededDie(seed: string) {
 }
 function makeMatchId() {
   const t = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
+  const pad = (n: number) => n.toString().padStart(2, '0');
   const date = `${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}`;
   const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${date}-${rand}`;
@@ -50,14 +50,12 @@ function normalizeBoard(b: unknown): (PlayerId | null)[][] {
   const size = BOARD_SIZE;
   if (!Array.isArray(b) || b.length === 0) return makeEmptyBoard();
   const rows = b as unknown[];
-  const h = rows.length;
-  const w = Array.isArray(rows[0]) ? (rows[0] as unknown[]).length : 0;
   const out = Array.from({ length: size }, (_, y) =>
     Array.from({ length: size }, (_, x) => {
       const row = Array.isArray(rows[y]) ? (rows[y] as unknown[]) : null;
       const cell = row && row[x];
-      return typeof cell === "number" ? ((cell % 4) as PlayerId) : null;
-    })
+      return typeof cell === 'number' ? ((cell % 4) as PlayerId) : null;
+    }),
   );
   return out;
 }
@@ -73,7 +71,7 @@ function boardFromHistory(
     player: PlayerId;
     at: { x: number; y: number };
     shape: number[][];
-  }>
+  }>,
 ): (PlayerId | null)[][] {
   const b = makeEmptyBoard();
   for (const mv of history) {
@@ -96,7 +94,7 @@ function boardFromHistory(
 
 function sanitizeSavedState(raw: unknown): GameState | null {
   try {
-    if (!raw || typeof raw !== "object") return null;
+    if (!raw || typeof raw !== 'object') return null;
     const obj = raw as Record<string, unknown>;
     if (!Array.isArray(obj.players) || obj.players.length !== 4) return null;
 
@@ -107,15 +105,15 @@ function sanitizeSavedState(raw: unknown): GameState | null {
 
     const isPlacedPiece = (mv: unknown): mv is PlacedPiece =>
       !!mv &&
-      typeof mv === "object" &&
-      typeof (mv as { player?: unknown }).player === "number" &&
-      typeof (mv as { at?: unknown }).at === "object" &&
-      typeof (mv as { at?: { x?: unknown } }).at?.x === "number" &&
-      typeof (mv as { at?: { y?: unknown } }).at?.y === "number" &&
+      typeof mv === 'object' &&
+      typeof (mv as { player?: unknown }).player === 'number' &&
+      typeof (mv as { at?: unknown }).at === 'object' &&
+      typeof (mv as { at?: { x?: unknown } }).at?.x === 'number' &&
+      typeof (mv as { at?: { y?: unknown } }).at?.y === 'number' &&
       Array.isArray((mv as { shape?: unknown }).shape);
 
     const history: PlacedPiece[] = rawHistory.filter(
-      isPlacedPiece
+      isPlacedPiece,
     ) as PlacedPiece[];
 
     // If the saved board is empty but we have history, rebuild it.
@@ -125,7 +123,7 @@ function sanitizeSavedState(raw: unknown): GameState | null {
 
     // Helper to validate piece ids
     const isPieceId = (pid: unknown): pid is PieceId =>
-      typeof pid === "string" &&
+      typeof pid === 'string' &&
       (ALL_PIECE_IDS as readonly string[]).includes(pid);
 
     // Coerce players array to ids [0..3] and clamp fields
@@ -133,22 +131,22 @@ function sanitizeSavedState(raw: unknown): GameState | null {
     for (const p of obj.players as unknown[]) {
       if (
         p &&
-        typeof p === "object" &&
-        "id" in p &&
-        typeof (p as { id: unknown }).id === "number"
+        typeof p === 'object' &&
+        'id' in p &&
+        typeof (p as { id: unknown }).id === 'number'
       ) {
         playersById.set((p as { id: number }).id, p as Record<string, unknown>);
       }
     }
     const players: PlayerState[] = [0, 1, 2, 3].map((id) => {
       const p = playersById.get(id);
-      const rawRemaining = p?.["remaining"];
+      const rawRemaining = p?.['remaining'];
       const remaining = Array.isArray(rawRemaining)
         ? (rawRemaining as unknown[]).filter(isPieceId)
         : [...ALL_PIECE_IDS];
-      const rawColor = p?.["color"];
+      const rawColor = p?.['color'];
       const color =
-        typeof rawColor === "string" &&
+        typeof rawColor === 'string' &&
         (PLAYER_COLORS as readonly string[]).includes(rawColor)
           ? (rawColor as PlayerColor)
           : PLAYER_COLORS[id];
@@ -156,8 +154,8 @@ function sanitizeSavedState(raw: unknown): GameState | null {
         id: id as PlayerId,
         color,
         remaining,
-        hasPlayed: !!p?.["hasPlayed"],
-        isBot: !!p?.["isBot"],
+        hasPlayed: !!p?.['hasPlayed'],
+        isBot: !!p?.['isBot'],
         score: 0, // recompute below
         active: true, // recompute below
       };
@@ -174,7 +172,7 @@ function sanitizeSavedState(raw: unknown): GameState | null {
     for (const p of players) p.score = scoreForRemaining(p.remaining);
 
     // Current player clamp
-    let current: PlayerId = ((typeof obj.current === "number"
+    const current: PlayerId = ((typeof obj.current === 'number'
       ? obj.current
       : 0) % 4) as PlayerId;
 
@@ -187,16 +185,16 @@ function sanitizeSavedState(raw: unknown): GameState | null {
     // Meta defaults
     const rawMeta = obj.meta;
     const metaSource =
-      rawMeta && typeof rawMeta === "object"
+      rawMeta && typeof rawMeta === 'object'
         ? (rawMeta as Record<string, unknown>)
         : {};
     const meta = {
       ...metaSource,
       matchId:
-        typeof metaSource["matchId"] === "string"
-          ? (metaSource["matchId"] as string)
+        typeof metaSource['matchId'] === 'string'
+          ? (metaSource['matchId'] as string)
           : makeMatchId(),
-      rollPending: !!metaSource["rollPending"] && false, // never resume into roll UI
+      rollPending: !!metaSource['rollPending'] && false, // never resume into roll UI
       showedRollOnce: true, // suppress roll overlay after resume
       hydrated: true,
     };
@@ -237,19 +235,19 @@ function sanitizeSavedState(raw: unknown): GameState | null {
 
 /** ---------- Actions ---------- */
 export type Action =
-  | { type: "START"; humans: 1 | 4; seed?: string } // seed optional
-  | { type: "HUMAN_ROLL" } // rolls for next human in queue
-  | { type: "BOT_ROLL"; pid: PlayerId }
+  | { type: 'START'; humans: 1 | 4; seed?: string } // seed optional
+  | { type: 'HUMAN_ROLL' } // rolls for next human in queue
+  | { type: 'BOT_ROLL'; pid: PlayerId }
   | {
-      type: "PLACE";
+      type: 'PLACE';
       pid: PlayerId;
       pieceId: string;
       shape: number[][];
       at: { x: number; y: number };
     }
-  | { type: "SKIP"; pid: PlayerId }
-  | { type: "MARK_ROLL_SHOWN" }
-  | { type: "HYDRATE"; payload: GameState };
+  | { type: 'SKIP'; pid: PlayerId }
+  | { type: 'MARK_ROLL_SHOWN' }
+  | { type: 'HYDRATE'; payload: GameState };
 
 /** ---------- Initial ---------- */
 export const initial: GameState = {
@@ -264,7 +262,7 @@ export const initial: GameState = {
 /** ---------- Reducer ---------- */
 export function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
-    case "START": {
+    case 'START': {
       const humans = action.humans;
       const players = buildPlayers(humans);
 
@@ -302,7 +300,7 @@ export function reducer(state: GameState, action: Action): GameState {
       };
     }
 
-    case "HUMAN_ROLL": {
+    case 'HUMAN_ROLL': {
       if (!state.meta?.rollPending || !state.meta.rollQueue?.length)
         return state;
 
@@ -310,55 +308,97 @@ export function reducer(state: GameState, action: Action): GameState {
         PlayerColor,
         PlayerColor,
         PlayerColor,
-        PlayerColor
+        PlayerColor,
       ];
       const { rngSeed, rolls: rawRolls = [] } = state.meta;
 
       // 1) who rolls now?
       const rollerId = state.meta.rollQueue[0];
 
-      // 2) compute human's roll deterministically from seed + rollerId + "H"
+      // 2) deterministic human roll
       const die = seededDie(`${rngSeed}-H-${rollerId}`);
       const humanValue = die();
 
-      // write it
-      const rolls = rawRolls.map((r) =>
-        r.id === rollerId ? { ...r, value: humanValue } : r
+      // 3) write it back into the seat-indexed rolls
+      const seatRolls = rawRolls.map((r) =>
+        r.id === rollerId ? { ...r, value: humanValue } : r,
       );
 
-      // 3) still more humans to roll? keep prompting
+      // 4) still humans left?
       const remainingQueue = state.meta.rollQueue.slice(1);
       if (remainingQueue.length > 0) {
         return {
           ...state,
           meta: {
             ...state.meta,
-            rolls,
+            rolls: seatRolls,
             rollQueue: remainingQueue,
             rollPending: true,
           },
         };
       }
 
-      // 4) no humans left — enqueue bots (but don't roll them yet)
-      const botQueue: PlayerId[] = state.players
-        .filter((p) => p.isBot)
-        .map((p) => p.id);
+      // 5) no humans left → fill bots deterministically but keep seat index
+      const filled = seatRolls.map((r) => {
+        if (r.value != null) return r;
+        const dieBot = seededDie(`${rngSeed}-B-${r.id}`);
+        return { ...r, value: dieBot() };
+      }) as { id: PlayerId; value: number }[];
+
+      // 6) resolve ties deterministically (reroll tied seats by salt)
+      const resolved = filled.slice();
+      const nextValue = (id: PlayerId, iter: number) =>
+        seededDie(`${rngSeed}-TB-${id}-${iter}`)();
+
+      const hasTies = () => {
+        const map: Record<number, PlayerId[]> = {};
+        for (const r of resolved) (map[r.value] ||= []).push(r.id);
+        return Object.values(map).some((ids) => ids.length > 1);
+      };
+
+      for (let iter = 1; iter <= 10 && hasTies(); iter++) {
+        const groups: Record<number, number[]> = {};
+        resolved.forEach((r, idx) => (groups[r.value] ||= []).push(idx));
+        for (const k of Object.keys(groups)) {
+          const g = groups[+k];
+          if (g.length > 1) {
+            for (const idx of g) {
+              const id = resolved[idx].id;
+              resolved[idx] = { id, value: nextValue(id, iter) };
+            }
+          }
+        }
+      }
+
+      // 7) compute final order by value (desc), ties by id (asc)
+      const order = resolved
+        .slice()
+        .sort((a, b) => b.value - a.value || a.id - b.id)
+        .map((r) => r.id); // e.g. [2,0,3,1] (seat ids)
+
+      // 8) Build display rows (Blue..Green with values) without touching players yet
+      const lookup = new Map(resolved.map((r) => [r.id, r.value]));
+      const lastRoll = order.map((oldSeatId, i) => ({
+        color: baseColors[i],
+        value: lookup.get(oldSeatId)!,
+      }));
 
       return {
         ...state,
+        // keep players & board untouched here
         meta: {
           ...state.meta,
-          rolls,
-          rollQueue: [], // no more humans
+          rolls: resolved, // seat-indexed (id = original seat)
+          order, // array of seat ids in Blue..Green order
+          lastRoll, // for the result overlay
           rollPending: false,
-          botQueue, // HUD will now showcase bots in order
-          // lastRoll remains undefined until all bots have rolled
+          rollQueue: [],
+          showedRollOnce: false,
         },
       };
     }
 
-    case "BOT_ROLL": {
+    case 'BOT_ROLL': {
       const meta = state.meta || {};
       const { rngSeed, botQueue = [], rolls: rawRolls = [] } = meta;
 
@@ -369,7 +409,7 @@ export function reducer(state: GameState, action: Action): GameState {
       const dieBot = seededDie(`${rngSeed}-B-${action.pid}`);
       const value = dieBot();
       const rolls = rawRolls.map((r) =>
-        r.id === action.pid ? { ...r, value } : r
+        r.id === action.pid ? { ...r, value } : r,
       );
 
       const remaining = botQueue.filter((id) => id !== action.pid);
@@ -388,12 +428,28 @@ export function reducer(state: GameState, action: Action): GameState {
         PlayerColor,
         PlayerColor,
         PlayerColor,
-        PlayerColor
+        PlayerColor,
       ];
 
       let resolved = rolls as { id: PlayerId; value: number }[];
-      const tieBreaks: Record<PlayerId, { from: number; to: number }> =
-        {} as any;
+      const tieBreaks: Record<PlayerId, { from: number; to: number }> = {
+        0: {
+          from: 0,
+          to: 0,
+        },
+        1: {
+          from: 0,
+          to: 0,
+        },
+        2: {
+          from: 0,
+          to: 0,
+        },
+        3: {
+          from: 0,
+          to: 0,
+        },
+      };
       const nextValue = (id: PlayerId, iter: number) =>
         seededDie(`${rngSeed}-TB-${id}-${iter}`)();
 
@@ -461,13 +517,13 @@ export function reducer(state: GameState, action: Action): GameState {
       };
     }
 
-    case "PLACE": {
+    case 'PLACE': {
       const next = applyMove(
         state,
         action.pid,
         action.pieceId,
         action.shape,
-        action.at
+        action.at,
       );
 
       // refresh active (pass is final) + recompute scores in ONE place
@@ -486,7 +542,7 @@ export function reducer(state: GameState, action: Action): GameState {
       return next;
     }
 
-    case "SKIP": {
+    case 'SKIP': {
       const players = state.players
         .map((p) => (p.id === action.pid ? { ...p, active: false } : { ...p }))
         .map((p) => ({ ...p, score: scoreForRemaining(p.remaining) }));
@@ -502,14 +558,42 @@ export function reducer(state: GameState, action: Action): GameState {
       return { ...state, players, current, winnerIds };
     }
 
-    case "MARK_ROLL_SHOWN": {
+    case 'MARK_ROLL_SHOWN': {
+      const meta = state.meta || {};
+      const baseColors = PLAYER_COLORS as readonly [
+        PlayerColor,
+        PlayerColor,
+        PlayerColor,
+        PlayerColor,
+      ];
+
+      // If we already reordered or no order was computed, just mark and bail.
+      if (!meta.order || meta.order.length !== 4) {
+        return { ...state, meta: { ...meta, showedRollOnce: true } };
+      }
+
+      // Rebuild players in Blue→Yellow→Red→Green order, *moving* seat identities.
+      const reordered = meta.order.map((oldSeatId, idx) => {
+        const p = state.players[oldSeatId];
+        return {
+          ...p,
+          id: idx as PlayerId,
+          color: baseColors[idx],
+        };
+      });
+
+      // Clear the order so we don't reorder again if MARK_ROLL_SHOWN fires twice
+      const newMeta = { ...meta, showedRollOnce: true, order: undefined };
+
       return {
         ...state,
-        meta: { ...(state.meta || {}), showedRollOnce: true },
+        players: reordered,
+        current: 0 as PlayerId, // Blue starts after results are acknowledged
+        meta: newMeta,
       };
     }
 
-    case "HYDRATE": {
+    case 'HYDRATE': {
       const s = sanitizeSavedState(action.payload);
       return s ? s : state;
     }
